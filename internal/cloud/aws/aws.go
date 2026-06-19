@@ -1,10 +1,18 @@
 package aws
 
-import "samrajan.me/otlbc/internal/cloud"
+import (
+	"context"
+
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
+	"github.com/aws/smithy-go/logging"
+	"samrajan.me/otlbc/internal/cloud"
+)
 
 type AWSInfoLoader struct{}
 
 func (l *AWSInfoLoader) GetInfo() (*cloud.Info, error) {
+	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		return nil, err
@@ -13,8 +21,9 @@ func (l *AWSInfoLoader) GetInfo() (*cloud.Info, error) {
 	stsClient := sts.NewFromConfig(cfg)
 	identity, err := stsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 
-	return *identity.Account, cfg.Region, nil
+	cfg.Logger.Logf(logging.Debug, *identity.Account)
+	return nil, nil
 }

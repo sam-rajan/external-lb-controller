@@ -35,7 +35,6 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	"samrajan.me/otlbc/internal/cloud"
 	"samrajan.me/otlbc/internal/controller"
 	// +kubebuilder:scaffold:imports
 )
@@ -177,8 +176,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	var i cloud.InfoLoader = nil
-
 	if err := (&controller.ServiceReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
@@ -202,4 +199,5 @@ func main() {
 		setupLog.Error(err, "Failed to run manager")
 		os.Exit(1)
 	}
+
 }
