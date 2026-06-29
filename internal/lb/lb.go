@@ -1,28 +1,33 @@
 package lb
 
 import (
+	"context"
+	"fmt"
+
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
 )
 
-// Manager handles load balancer lifecycle for a Service.
-type Manager struct{}
-
-// NewManager returns a new load balancer Manager.
-func NewManager() *Manager {
-	return &Manager{}
+// Manager delegates load balancer operations to the detected cloud Provider.
+type Manager struct {
+	provider Provider
 }
 
-// EnsureLB creates or updates the load balancer for the given Service.
-// epSlices are the EndpointSlices currently associated with the Service.
-// Returns the provisioned hostname/IP to set on the Service status.
-func (m *Manager) EnsureLB(svc *corev1.Service, epSlices []discoveryv1.EndpointSlice) (hostname string, err error) {
-	// TODO: implement load balancer creation/update
-	return "", nil
+// NewManager iterates all registered Detectors and returns a Manager backed by
+// the first Provider that reports itself as applicable for the current environment.
+func NewManager(ctx context.Context) (*Manager, error) {
+	for _, detect := range registry {
+		if p, ok := detect(ctx); ok {
+			return &Manager{provider: p}, nil
+		}
+	}
+	return nil, fmt.Errorf("no load balancer provider detected for the current environment")
 }
 
-// DeleteLB removes the load balancer associated with the given Service.
+func (m *Manager) EnsureLB(svc *corev1.Service, epSlices []discoveryv1.EndpointSlice) (string, error) {
+	return m.provider.EnsureLB(context.Background(), svc, epSlices)
+}
+
 func (m *Manager) DeleteLB(svc *corev1.Service) error {
-	// TODO: implement load balancer deletion
-	return nil
+	return m.provider.DeleteLB(context.Background(), svc)
 }

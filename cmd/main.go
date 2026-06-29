@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"flag"
 	"os"
@@ -37,6 +38,7 @@ import (
 
 	"samrajan.me/otlbc/internal/controller"
 	"samrajan.me/otlbc/internal/lb"
+	_ "samrajan.me/otlbc/internal/lb/aws" // register AWS ALB provider
 	// +kubebuilder:scaffold:imports
 )
 
@@ -177,10 +179,16 @@ func main() {
 		os.Exit(1)
 	}
 
+	lbManager, err := lb.NewManager(context.Background())
+	if err != nil {
+		setupLog.Error(err, "Failed to detect load balancer provider")
+		os.Exit(1)
+	}
+
 	if err := (&controller.ServiceReconciler{
 		Client:    mgr.GetClient(),
 		Scheme:    mgr.GetScheme(),
-		LBManager: lb.NewManager(),
+		LBManager: lbManager,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "service")
 		os.Exit(1)

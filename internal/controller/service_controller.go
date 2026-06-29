@@ -83,6 +83,7 @@ func (r *ServiceReconciler) reconcileUpsert(ctx context.Context, svc *corev1.Ser
 		}
 	}
 
+	logf.FromContext(ctx).Info("Reconciling load balancer for service", "service", types.NamespacedName{Name: svc.Name, Namespace: svc.Namespace})
 	epSlices, err := r.endpointSlicesForService(ctx, svc)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -118,6 +119,7 @@ func (r *ServiceReconciler) reconcileDelete(ctx context.Context, svc *corev1.Ser
 		return ctrl.Result{}, nil
 	}
 
+	logf.FromContext(ctx).Info("Deleting load balancer for service", "service", types.NamespacedName{Name: svc.Name, Namespace: svc.Namespace})
 	if err := r.LBManager.DeleteLB(svc); err != nil {
 		logf.FromContext(ctx).Error(err, "Failed to delete load balancer")
 		return ctrl.Result{}, err
