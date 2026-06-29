@@ -18,10 +18,12 @@ package controller
 
 import (
 	"context"
+	"slices"
 
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -29,34 +31,120 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	"samrajan.me/otlbc/internal/lb"
+)
+
+const (
+	lbClass     = "samrajan.me/otlbc"
+	lbFinalizer = "samrajan.me/lb-cleanup"
 )
 
 // ServiceReconciler reconciles a Service object
 type ServiceReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme    *runtime.Scheme
+	LBManager *lb.Manager
 }
 
 // +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=services/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=core,resources=services/finalizers,verbs=update
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the Service object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.23.3/pkg/reconcile
-func (r *ServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := logf.FromContext(ctx)
-	logger.Info("THis is executed")
+// +kubebuilder:rbac:groups=core,resources=endpoints,verbs=get;list;watch
 
-	// TODO(user): your logic here
+func (r *ServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+
+	svc := &corev1.Service{}
+	if err := r.Get(ctx, req.NamespacedName, svc); err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	// Guard: only handle services that still match our class (predicate covers
+	// events but the object may have changed by the time we reconcile).
+	if !r.ownedByUs(svc) {
+		return ctrl.Result{}, nil
+	}
+
+	if !svc.DeletionTimestamp.IsZero() {
+		return r.reconcileDelete(ctx, svc)
+	}
+
+	return r.reconcileUpsert(ctx, svc)
+}
+
+func (r *ServiceReconciler) reconcileUpsert(ctx context.Context, svc *corev1.Service) (ctrl.Result, error) {
+	// Add finalizer so we can clean up the LB on deletion.
+	if !containsString(svc.Finalizers, lbFinalizer) {
+		svc.Finalizers = append(svc.Finalizers, lbFinalizer)
+		if err := r.Update(ctx, svc); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
+	epSlices, err := r.endpointSlicesForService(ctx, svc)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	hostname, err := r.LBManager.EnsureLB(svc, epSlices)
+	if err != nil {
+		logf.FromContext(ctx).Error(err, "Failed to ensure load balancer")
+		return ctrl.Result{}, err
+	}
+
+	if hostname != "" {
+		return r.setIngressStatus(ctx, svc, hostname)
+	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *ServiceReconciler) endpointSlicesForService(ctx context.Context, svc *corev1.Service) ([]discoveryv1.EndpointSlice, error) {
+	list := &discoveryv1.EndpointSliceList{}
+	err := r.List(ctx, list,
+		client.InNamespace(svc.Namespace),
+		client.MatchingLabels{discoveryv1.LabelServiceName: svc.Name},
+	)
+	if err != nil {
+		return nil, err
+	}
+	return list.Items, nil
+}
+
+func (r *ServiceReconciler) reconcileDelete(ctx context.Context, svc *corev1.Service) (ctrl.Result, error) {
+	if !containsString(svc.Finalizers, lbFinalizer) {
+		return ctrl.Result{}, nil
+	}
+
+	if err := r.LBManager.DeleteLB(svc); err != nil {
+		logf.FromContext(ctx).Error(err, "Failed to delete load balancer")
+		return ctrl.Result{}, err
+	}
+
+	svc.Finalizers = removeString(svc.Finalizers, lbFinalizer)
+	return ctrl.Result{}, r.Update(ctx, svc)
+}
+
+func (r *ServiceReconciler) setIngressStatus(ctx context.Context, svc *corev1.Service, hostname string) (ctrl.Result, error) {
+	patch := client.MergeFrom(svc.DeepCopy())
+	svc.Status.LoadBalancer.Ingress = []corev1.LoadBalancerIngress{{Hostname: hostname}}
+	return ctrl.Result{}, r.Status().Patch(ctx, svc, patch)
+}
+
+func (r *ServiceReconciler) ownedByUs(svc *corev1.Service) bool {
+	return svc.Spec.Type == corev1.ServiceTypeLoadBalancer &&
+		svc.Spec.LoadBalancerClass != nil &&
+		*svc.Spec.LoadBalancerClass == lbClass
+}
+
+func containsString(slice []string, s string) bool {
+	return slices.Contains(slice, s)
+}
+
+func removeString(slice []string, s string) []string {
+	return slices.DeleteFunc(slice, func(v string) bool { return v == s })
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -66,7 +154,7 @@ func (r *ServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			svc, ok := e.Object.(*corev1.Service)
 			return ok && svc.Spec.Type == corev1.ServiceTypeLoadBalancer &&
 				svc.Spec.LoadBalancerClass != nil &&
-				*svc.Spec.LoadBalancerClass == "out-tree-lbc"
+				*svc.Spec.LoadBalancerClass == lbClass
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			oldSvc, okOld := e.ObjectOld.(*corev1.Service)
@@ -76,14 +164,14 @@ func (r *ServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			}
 
 			return (newSvc.Spec.Type == corev1.ServiceTypeLoadBalancer && newSvc.Spec.LoadBalancerClass != nil &&
-				*newSvc.Spec.LoadBalancerClass == "out-tree-lbc") ||
+				*newSvc.Spec.LoadBalancerClass == lbClass) ||
 				(oldSvc.Spec.Type == corev1.ServiceTypeLoadBalancer && oldSvc.Spec.LoadBalancerClass != nil &&
-					*oldSvc.Spec.LoadBalancerClass == "out-tree-lbc")
+					*oldSvc.Spec.LoadBalancerClass == lbClass)
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
 			svc, ok := e.Object.(*corev1.Service)
 			return ok && svc.Spec.Type == corev1.ServiceTypeLoadBalancer && svc.Spec.LoadBalancerClass != nil &&
-				*svc.Spec.LoadBalancerClass == "out-tree-lbc"
+				*svc.Spec.LoadBalancerClass == lbClass
 		},
 	}
 
@@ -91,7 +179,15 @@ func (r *ServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&corev1.Service{}, builder.WithPredicates(eventFilter)).
 		Watches(
 			&discoveryv1.EndpointSlice{},
-			handler.EnqueueRequestForOwner(mgr.GetScheme(), mgr.GetRESTMapper(), &corev1.Service{}),
+			handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
+				svcName, ok := obj.GetLabels()[discoveryv1.LabelServiceName]
+				if !ok {
+					return nil
+				}
+				return []reconcile.Request{
+					{NamespacedName: types.NamespacedName{Name: svcName, Namespace: obj.GetNamespace()}},
+				}
+			}),
 		).
 		Named("loadbalancer-service").
 		Complete(r)

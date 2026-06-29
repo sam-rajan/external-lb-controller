@@ -6,11 +6,11 @@ metadata:
     app: web-app
 spec:
   type: LoadBalancer
-  loadBalancerClass: out-tree-lbc
+  loadBalancerClass: samrajan.me/otlbc
   selector:
     run: nginx
   ports:
     - name: http
       protocol: TCP
-      port: 80         # The port the Service is exposed on inside the cluster
-      targetPort: 8080 # The port the application is actually listening on in the Pod 
+      port: 80 # The port the Service is exposed on inside the cluster
+      targetPort: 8080 # The port the application is actually listening on in the Pod

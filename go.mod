@@ -1,6 +1,6 @@
 module samrajan.me/otlbc
 
-go 1.25.7
+go 1.26
 
 require (
 	github.com/onsi/ginkgo/v2 v2.27.2

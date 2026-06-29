@@ -36,6 +36,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	"samrajan.me/otlbc/internal/controller"
+	"samrajan.me/otlbc/internal/lb"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -177,8 +178,9 @@ func main() {
 	}
 
 	if err := (&controller.ServiceReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:    mgr.GetClient(),
+		Scheme:    mgr.GetScheme(),
+		LBManager: lb.NewManager(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "service")
 		os.Exit(1)
