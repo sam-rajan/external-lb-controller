@@ -4,6 +4,8 @@ metadata:
   name: my-nodeport-service
   labels:
     app: web-app
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-subnets: subnet-0123456789abcdef0,subnet-0fedcba9876543210
 spec:
   type: LoadBalancer
   loadBalancerClass: samrajan.me/otlbc
