@@ -1,17 +1,17 @@
 // Package aws registers an AWS ALB-backed load balancer provider.
-// Import this package with a blank import in main to activate it:
-//
-//	import _ "samrajan.me/otlbc/internal/lb/aws"
 package aws
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 	corev1 "k8s.io/api/core/v1"
@@ -27,7 +27,7 @@ const (
 	annotationScheme         = "service.beta.kubernetes.io/aws-load-balancer-scheme" // "internet-facing" (default) or "internal"
 
 	// Tag applied to every AWS resource managed by this controller.
-	tagOwnerKey = "samrajan.me/service"
+	tagOwnerKey = "otlbc.io/service"
 )
 
 func init() {
@@ -51,10 +51,6 @@ type albProvider struct {
 	elb *elbv2.Client
 	ec2 *ec2.Client
 }
-
-// ──────────────────────────────────────────────────────────────────────────────
-// EnsureLB
-// ──────────────────────────────────────────────────────────────────────────────
 
 func (p *albProvider) EnsureLB(ctx context.Context, svc *corev1.Service, epSlices []discoveryv1.EndpointSlice) (string, error) {
 	ownerTag := ownerTagValue(svc)
@@ -135,16 +131,33 @@ func (p *albProvider) createALB(ctx context.Context, svc *corev1.Service, ownerT
 	if err != nil {
 		return nil, err
 	}
-	securityGroups, err := requiredAnnotation(svc, annotationSecurityGroups)
-	if err != nil {
-		return nil, err
+	subnetIDs := splitCSV(subnets)
+
+	var sgIDs []string
+	if v := svc.Annotations[annotationSecurityGroups]; v != "" {
+		sgIDs = splitCSV(v)
+	} else {
+		vpcID, err := p.vpcIDFromSubnet(ctx, subnetIDs[0])
+		if err != nil {
+			return nil, fmt.Errorf("resolve VPC ID: %w", err)
+		}
+		sgID, err := p.ensureSecurityGroup(ctx, svc, ownerTag, vpcID)
+		if err != nil {
+			return nil, fmt.Errorf("ensure security group: %w", err)
+		}
+		sgIDs = []string{sgID}
+	}
+
+	scheme := types.LoadBalancerSchemeEnumInternetFacing
+	if svc.Annotations[annotationScheme] == "internal" {
+		scheme = types.LoadBalancerSchemeEnumInternal
 	}
 
 	out, err := p.elb.CreateLoadBalancer(ctx, &elbv2.CreateLoadBalancerInput{
 		Name:           aws.String(albName(svc)),
-		Subnets:        splitCSV(subnets),
-		SecurityGroups: splitCSV(securityGroups),
-		Scheme:         types.LoadBalancerSchemeEnumInternetFacing,
+		Subnets:        subnetIDs,
+		SecurityGroups: sgIDs,
+		Scheme:         scheme,
 		Tags:           []types.Tag{{Key: aws.String(tagOwnerKey), Value: aws.String(ownerTag)}},
 	})
 	if err != nil {
@@ -153,11 +166,38 @@ func (p *albProvider) createALB(ctx context.Context, svc *corev1.Service, ownerT
 	return &out.LoadBalancers[0], nil
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// Target groups
-// ──────────────────────────────────────────────────────────────────────────────
+// ensureSecurityGroup finds the auto-managed SG for this service, or creates one.
+func (p *albProvider) ensureSecurityGroup(ctx context.Context, svc *corev1.Service, ownerTag, vpcID string) (string, error) {
+	out, err := p.ec2.DescribeSecurityGroups(ctx, &ec2.DescribeSecurityGroupsInput{
+		Filters: []ec2types.Filter{
+			{Name: aws.String("vpc-id"), Values: []string{vpcID}},
+			{Name: aws.String("tag:" + tagOwnerKey), Values: []string{ownerTag}},
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+	if len(out.SecurityGroups) > 0 {
+		return aws.ToString(out.SecurityGroups[0].GroupId), nil
+	}
 
-// findTargetGroup returns the target group for this service+port, or nil.
+	created, err := p.ec2.CreateSecurityGroup(ctx, &ec2.CreateSecurityGroupInput{
+		GroupName:   aws.String(albName(svc)),
+		Description: aws.String("Managed by otlbc for " + ownerTag),
+		VpcId:       aws.String(vpcID),
+		TagSpecifications: []ec2types.TagSpecification{{
+			ResourceType: ec2types.ResourceTypeSecurityGroup,
+			Tags: []ec2types.Tag{
+				{Key: aws.String(tagOwnerKey), Value: aws.String(ownerTag)},
+			},
+		}},
+	})
+	if err != nil {
+		return "", err
+	}
+	return aws.ToString(created.GroupId), nil
+}
+
 func (p *albProvider) findTargetGroup(ctx context.Context, ownerTag string, servicePort int32) (*types.TargetGroup, error) {
 	out, err := p.elb.DescribeTargetGroups(ctx, &elbv2.DescribeTargetGroupsInput{})
 	if err != nil {
@@ -305,10 +345,6 @@ func (p *albProvider) ensureListener(ctx context.Context, albARN, tgARN string, 
 	return err
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// DeleteLB
-// ──────────────────────────────────────────────────────────────────────────────
-
 func (p *albProvider) DeleteLB(ctx context.Context, svc *corev1.Service) error {
 	ownerTag := ownerTagValue(svc)
 
@@ -341,6 +377,16 @@ func (p *albProvider) DeleteLB(ctx context.Context, svc *corev1.Service) error {
 		return fmt.Errorf("delete ALB: %w", err)
 	}
 
+	// Wait for the ALB to be fully deleted before releasing dependent resources.
+	// AWS deletes ALBs asynchronously; SG and target groups cannot be removed while
+	// the ALB still holds references to them.
+	waiter := elbv2.NewLoadBalancersDeletedWaiter(p.elb)
+	if err := waiter.Wait(ctx, &elbv2.DescribeLoadBalancersInput{
+		LoadBalancerArns: []string{aws.ToString(alb.LoadBalancerArn)},
+	}, 5*time.Minute); err != nil {
+		return fmt.Errorf("wait for ALB deletion: %w", err)
+	}
+
 	// Delete target groups after the ALB (they cannot be deleted while in use).
 	for _, port := range svc.Spec.Ports {
 		tg, err := p.findTargetGroup(ctx, ownerTag, port.Port)
@@ -354,12 +400,72 @@ func (p *albProvider) DeleteLB(ctx context.Context, svc *corev1.Service) error {
 		}
 	}
 
+	// Delete the auto-managed security group if one was created (user-provided SGs are left alone).
+	if err := p.deleteMangedSecurityGroup(ctx, ownerTag, alb); err != nil {
+		return fmt.Errorf("delete managed security group: %w", err)
+	}
+
 	return nil
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ──────────────────────────────────────────────────────────────────────────────
+func (p *albProvider) deleteMangedSecurityGroup(ctx context.Context, ownerTag string, alb *types.LoadBalancer) error {
+	vpcID := ""
+	for _, az := range alb.AvailabilityZones {
+		if az.SubnetId != nil {
+			id, err := p.vpcIDFromSubnet(ctx, *az.SubnetId)
+			if err == nil {
+				vpcID = id
+				break
+			}
+		}
+	}
+	if vpcID == "" {
+		return nil
+	}
+
+	out, err := p.ec2.DescribeSecurityGroups(ctx, &ec2.DescribeSecurityGroupsInput{
+		Filters: []ec2types.Filter{
+			{Name: aws.String("vpc-id"), Values: []string{vpcID}},
+			{Name: aws.String("tag:" + tagOwnerKey), Values: []string{ownerTag}},
+		},
+	})
+	if err != nil || len(out.SecurityGroups) == 0 {
+		return err
+	}
+
+	for _, sg := range out.SecurityGroups {
+		if err := p.deleteSecurityGroupWithRetry(ctx, aws.ToString(sg.GroupId)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (p *albProvider) deleteSecurityGroupWithRetry(ctx context.Context, sgID string) error {
+	const maxAttempts = 10
+
+	var apiErr interface{ ErrorCode() string }
+	delay := 5 * time.Second
+	for range maxAttempts {
+		_, err := p.ec2.DeleteSecurityGroup(ctx, &ec2.DeleteSecurityGroupInput{
+			GroupId: aws.String(sgID),
+		})
+		if err == nil {
+			return nil
+		}
+		if errors.As(err, &apiErr) && apiErr.ErrorCode() == "DependencyViolation" {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(delay):
+				delay *= 2
+				continue
+			}
+		}
+		return err
+	}
+	return fmt.Errorf("security group %s still has dependencies after %d attempts", sgID, maxAttempts)
+}
 
 func ownerTagValue(svc *corev1.Service) string {
 	return svc.Namespace + "/" + svc.Name

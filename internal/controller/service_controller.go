@@ -37,8 +37,8 @@ import (
 )
 
 const (
-	lbClass     = "samrajan.me/otlbc"
-	lbFinalizer = "samrajan.me/lb-cleanup"
+	lbClass     = "otlbc.io/lb"
+	lbFinalizer = "otlbc.io/lb-cleanup"
 )
 
 // ServiceReconciler reconciles a Service object
