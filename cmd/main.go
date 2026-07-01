@@ -30,12 +30,14 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
+	"samrajan.me/otlbc/internal/cert"
 	"samrajan.me/otlbc/internal/controller"
 	"samrajan.me/otlbc/internal/lb"
 	_ "samrajan.me/otlbc/internal/lb/aws" // register AWS ALB provider
@@ -58,6 +60,7 @@ func main() {
 	var metricsAddr string
 	var metricsCertPath, metricsCertName, metricsCertKey string
 	var webhookCertPath, webhookCertName, webhookCertKey string
+	var webhookSecretName, webhookServiceName, webhookConfigName string
 	var enableLeaderElection bool
 	var probeAddr string
 	var secureMetrics bool
@@ -74,6 +77,9 @@ func main() {
 	flag.StringVar(&webhookCertPath, "webhook-cert-path", "", "The directory that contains the webhook certificate.")
 	flag.StringVar(&webhookCertName, "webhook-cert-name", "tls.crt", "The name of the webhook certificate file.")
 	flag.StringVar(&webhookCertKey, "webhook-cert-key", "tls.key", "The name of the webhook key file.")
+	flag.StringVar(&webhookSecretName, "webhook-secret-name", "otlbc-webhook-certs", "Secret used to persist generated webhook TLS certs.")
+	flag.StringVar(&webhookServiceName, "webhook-service-name", "otlbc-webhook-service", "Kubernetes Service fronting the webhook server (used for cert SANs).")
+	flag.StringVar(&webhookConfigName, "webhook-config-name", "", "Name of the ValidatingWebhookConfiguration to keep caBundle in sync. Leave empty to skip cert bootstrap.")
 	flag.StringVar(&metricsCertPath, "metrics-cert-path", "",
 		"The directory that contains the metrics server certificate.")
 	flag.StringVar(&metricsCertName, "metrics-cert-name", "tls.crt", "The name of the metrics server certificate file.")
@@ -104,9 +110,42 @@ func main() {
 	}
 
 	// Initial webhook TLS options
-	webhookTLSOpts := tlsOpts
+	webhookTLSOpts := make([]func(*tls.Config), len(tlsOpts))
+	copy(webhookTLSOpts, tlsOpts)
 	webhookServerOptions := webhook.Options{
 		TLSOpts: webhookTLSOpts,
+	}
+
+	// If --webhook-config-name is set, bootstrap managed TLS certs and wire
+	// GetCertificate so rotation takes effect without a pod restart.
+	// The explicit --webhook-cert-path flag (below) takes precedence if both are set.
+	if webhookConfigName != "" {
+		ns := os.Getenv("POD_NAMESPACE")
+		if ns == "" {
+			setupLog.Error(nil, "POD_NAMESPACE env var must be set when --webhook-config-name is used")
+			os.Exit(1)
+		}
+		bootstrapClient, err := client.New(ctrl.GetConfigOrDie(), client.Options{Scheme: scheme})
+		if err != nil {
+			setupLog.Error(err, "Failed to create client for cert bootstrap")
+			os.Exit(1)
+		}
+		certMgr, err := cert.New(context.Background(), bootstrapClient, cert.Options{
+			SecretName:        webhookSecretName,
+			Namespace:         ns,
+			ServiceName:       webhookServiceName,
+			WebhookConfigName: webhookConfigName,
+		})
+		if err != nil {
+			setupLog.Error(err, "Failed to bootstrap webhook certs")
+			os.Exit(1)
+		}
+		webhookTLSOpts = append(webhookTLSOpts, func(c *tls.Config) {
+			c.GetCertificate = certMgr.GetCertificate
+		})
+		webhookServerOptions.TLSOpts = webhookTLSOpts
+		certMgr.StartRotation(context.Background())
+		setupLog.Info("Webhook cert bootstrap complete", "config", webhookConfigName, "secret", webhookSecretName)
 	}
 
 	if len(webhookCertPath) > 0 {
