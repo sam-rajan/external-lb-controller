@@ -23,7 +23,6 @@ type Config struct {
 
 	ProbeAddr            string
 	EnableLeaderElection bool
-	EnableHTTP2          bool
 
 	ZapOptions zap.Options
 }
@@ -31,7 +30,10 @@ type Config struct {
 // parseFlags registers all flags and calls flag.Parse, returning the populated Config.
 func parseFlags() *Config {
 	cfg := &Config{}
-	cfg.ZapOptions = zap.Options{Development: true}
+
+	// Default to production logging (JSON, info level). Developers can opt into
+	// human-readable debug output with --zap-devel.
+	cfg.ZapOptions = zap.Options{Development: false}
 
 	flag.StringVar(&cfg.MetricsAddr, "metrics-bind-address", "0",
 		"The address the metrics endpoint binds to. Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable.")
@@ -54,8 +56,6 @@ func parseFlags() *Config {
 	flag.StringVar(&cfg.ProbeAddr, "health-probe-bind-address", ":8081", "The address the health probe endpoint binds to.")
 	flag.BoolVar(&cfg.EnableLeaderElection, "leader-elect", false,
 		"Enable leader election to ensure only one active controller manager.")
-	flag.BoolVar(&cfg.EnableHTTP2, "enable-http2", false,
-		"Enable HTTP/2 for the metrics and webhook servers.")
 
 	cfg.ZapOptions.BindFlags(flag.CommandLine)
 	flag.Parse()

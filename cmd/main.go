@@ -40,6 +40,7 @@ import (
 	"samrajan.me/otlbc/internal/controller"
 	"samrajan.me/otlbc/internal/lb"
 	_ "samrajan.me/otlbc/internal/lb/aws" // register AWS ALB provider
+	otlbcwebhook "samrajan.me/otlbc/internal/webhook"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -59,20 +60,9 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&cfg.ZapOptions)))
 
-	// Disable HTTP/2 by default to avoid Stream Cancellation and Rapid Reset CVEs.
-	// https://github.com/advisories/GHSA-qppj-fm5r-hxr3
-	// https://github.com/advisories/GHSA-4374-p667-p6c8
-	var tlsOpts []func(*tls.Config)
-	if !cfg.EnableHTTP2 {
-		tlsOpts = append(tlsOpts, func(c *tls.Config) {
-			setupLog.Info("Disabling HTTP/2")
-			c.NextProtos = []string{"http/1.1"}
-		})
-	}
+	webhookServer := buildWebhookServer(cfg)
 
-	webhookServer := buildWebhookServer(cfg, tlsOpts)
-
-	metricsServerOptions := buildMetricsOptions(cfg, tlsOpts)
+	metricsServerOptions := buildMetricsOptions(cfg)
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
@@ -101,6 +91,11 @@ func main() {
 		setupLog.Error(err, "Failed to create controller", "controller", "service")
 		os.Exit(1)
 	}
+
+	if err := otlbcwebhook.SetupServiceValidatorWithManager(mgr); err != nil {
+		setupLog.Error(err, "Failed to set up service validator webhook")
+		os.Exit(1)
+	}
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
@@ -119,11 +114,8 @@ func main() {
 	}
 }
 
-func buildWebhookServer(cfg *Config, tlsOpts []func(*tls.Config)) webhook.Server {
-	webhookTLSOpts := make([]func(*tls.Config), len(tlsOpts))
-	copy(webhookTLSOpts, tlsOpts)
-
-	opts := webhook.Options{TLSOpts: webhookTLSOpts}
+func buildWebhookServer(cfg *Config) webhook.Server {
+	opts := webhook.Options{}
 
 	// Managed cert bootstrap: generate/rotate certs internally, no cert-manager needed.
 	// Takes effect when --webhook-config-name is provided.
@@ -148,9 +140,9 @@ func buildWebhookServer(cfg *Config, tlsOpts []func(*tls.Config)) webhook.Server
 			setupLog.Error(err, "Failed to bootstrap webhook certs")
 			os.Exit(1)
 		}
-		opts.TLSOpts = append(opts.TLSOpts, func(c *tls.Config) {
+		opts.TLSOpts = []func(*tls.Config){func(c *tls.Config) {
 			c.GetCertificate = certMgr.GetCertificate
-		})
+		}}
 		certMgr.StartRotation(context.Background())
 		setupLog.Info("Webhook cert bootstrap complete", "config", cfg.WebhookConfigName, "secret", cfg.WebhookSecretName)
 	}
@@ -166,11 +158,10 @@ func buildWebhookServer(cfg *Config, tlsOpts []func(*tls.Config)) webhook.Server
 	return webhook.NewServer(opts)
 }
 
-func buildMetricsOptions(cfg *Config, tlsOpts []func(*tls.Config)) metricsserver.Options {
+func buildMetricsOptions(cfg *Config) metricsserver.Options {
 	opts := metricsserver.Options{
 		BindAddress:   cfg.MetricsAddr,
 		SecureServing: cfg.SecureMetrics,
-		TLSOpts:       tlsOpts,
 	}
 
 	if cfg.SecureMetrics {
