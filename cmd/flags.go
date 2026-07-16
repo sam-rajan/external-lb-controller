@@ -14,12 +14,9 @@ type Config struct {
 	MetricsCertKey  string
 	SecureMetrics   bool
 
-	WebhookCertDir     string
-	WebhookCertName    string
-	WebhookCertKey     string
-	WebhookSecretName  string
-	WebhookServiceName string
-	WebhookConfigName  string
+	WebhookCertDir  string
+	WebhookCertName string
+	WebhookCertKey  string
 
 	ProbeAddr            string
 	EnableLeaderElection bool
@@ -46,12 +43,6 @@ func parseFlags() *Config {
 	flag.StringVar(&cfg.WebhookCertDir, "webhook-cert-path", "", "Directory containing the webhook certificate.")
 	flag.StringVar(&cfg.WebhookCertName, "webhook-cert-name", "tls.crt", "Webhook certificate filename.")
 	flag.StringVar(&cfg.WebhookCertKey, "webhook-cert-key", "tls.key", "Webhook key filename.")
-	flag.StringVar(&cfg.WebhookSecretName, "webhook-secret-name", "otlbc-webhook-certs",
-		"Secret used to persist generated webhook TLS certs.")
-	flag.StringVar(&cfg.WebhookServiceName, "webhook-service-name", "otlbc-webhook-service",
-		"Kubernetes Service fronting the webhook server (used for cert SANs).")
-	flag.StringVar(&cfg.WebhookConfigName, "webhook-config-name", "",
-		"Name of the ValidatingWebhookConfiguration to keep caBundle in sync. Leave empty to skip cert bootstrap.")
 
 	flag.StringVar(&cfg.ProbeAddr, "health-probe-bind-address", ":8081", "The address the health probe endpoint binds to.")
 	flag.BoolVar(&cfg.EnableLeaderElection, "leader-elect", false,

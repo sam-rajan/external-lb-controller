@@ -112,10 +112,26 @@ lint-config: golangci-lint ## Verify golangci-lint linter configuration
 build: manifests generate fmt vet ## Build manager binary.
 	go build -o bin/manager ./cmd/
 
-.PHONY: run
-run: manifests generate fmt vet ## Run a controller from your host.
-	go run ./cmd/main.go
+## Directory holding the self-signed webhook cert generated for local runs.
+WEBHOOK_CERTS_DIR ?= $(LOCALBIN)/webhook-certs
 
+.PHONY: webhook-certs
+webhook-certs: ## Generate a self-signed cert/key for running the webhook server locally (make run).
+	@mkdir -p "$(WEBHOOK_CERTS_DIR)"
+	@if [ -f "$(WEBHOOK_CERTS_DIR)/tls.crt" ]; then \
+		echo "Webhook certs already exist at $(WEBHOOK_CERTS_DIR); skipping (remove the directory to regenerate)."; \
+	else \
+		openssl req -x509 -newkey rsa:2048 -nodes -days 365 \
+			-keyout "$(WEBHOOK_CERTS_DIR)/tls.key" \
+			-out "$(WEBHOOK_CERTS_DIR)/tls.crt" \
+			-subj "/CN=localhost" \
+			-addext "subjectAltName=DNS:localhost,IP:127.0.0.1"; \
+		echo "Generated webhook certs in $(WEBHOOK_CERTS_DIR)"; \
+	fi
+
+.PHONY: run
+run: manifests generate fmt vet webhook-certs ## Run a controller from your host.
+	go run ./cmd/ --webhook-cert-path="$(WEBHOOK_CERTS_DIR)"
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/

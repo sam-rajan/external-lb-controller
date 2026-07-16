@@ -18,7 +18,6 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
 	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -29,14 +28,12 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	"samrajan.me/otlbc/internal/cert"
 	"samrajan.me/otlbc/internal/controller"
 	"samrajan.me/otlbc/internal/lb"
 	_ "samrajan.me/otlbc/internal/lb/aws" // register AWS ALB provider
@@ -57,11 +54,9 @@ func init() {
 
 func main() {
 	cfg := parseFlags()
-
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&cfg.ZapOptions)))
 
 	webhookServer := buildWebhookServer(cfg)
-
 	metricsServerOptions := buildMetricsOptions(cfg)
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
@@ -70,7 +65,7 @@ func main() {
 		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: cfg.ProbeAddr,
 		LeaderElection:         cfg.EnableLeaderElection,
-		LeaderElectionID:       "c0db1dc7.samrajan.me",
+		LeaderElectionID:       "c0db1dc7.otlbc.io",
 	})
 	if err != nil {
 		setupLog.Error(err, "Failed to start manager")
@@ -117,37 +112,6 @@ func main() {
 func buildWebhookServer(cfg *Config) webhook.Server {
 	opts := webhook.Options{}
 
-	// Managed cert bootstrap: generate/rotate certs internally, no cert-manager needed.
-	// Takes effect when --webhook-config-name is provided.
-	if cfg.WebhookConfigName != "" {
-		ns := os.Getenv("POD_NAMESPACE")
-		if ns == "" {
-			setupLog.Error(nil, "POD_NAMESPACE env var must be set when --webhook-config-name is used")
-			os.Exit(1)
-		}
-		bootstrapClient, err := client.New(ctrl.GetConfigOrDie(), client.Options{Scheme: scheme})
-		if err != nil {
-			setupLog.Error(err, "Failed to create client for cert bootstrap")
-			os.Exit(1)
-		}
-		certMgr, err := cert.New(context.Background(), bootstrapClient, cert.Options{
-			SecretName:        cfg.WebhookSecretName,
-			Namespace:         ns,
-			ServiceName:       cfg.WebhookServiceName,
-			WebhookConfigName: cfg.WebhookConfigName,
-		})
-		if err != nil {
-			setupLog.Error(err, "Failed to bootstrap webhook certs")
-			os.Exit(1)
-		}
-		opts.TLSOpts = []func(*tls.Config){func(c *tls.Config) {
-			c.GetCertificate = certMgr.GetCertificate
-		}}
-		certMgr.StartRotation(context.Background())
-		setupLog.Info("Webhook cert bootstrap complete", "config", cfg.WebhookConfigName, "secret", cfg.WebhookSecretName)
-	}
-
-	// Explicit cert path takes precedence over managed certs.
 	if cfg.WebhookCertDir != "" {
 		setupLog.Info("Using provided webhook certificates", "path", cfg.WebhookCertDir)
 		opts.CertDir = cfg.WebhookCertDir
