@@ -114,6 +114,10 @@ build: manifests generate fmt vet ## Build manager binary.
 
 ## Directory holding the self-signed webhook cert generated for local runs.
 WEBHOOK_CERTS_DIR ?= $(LOCALBIN)/webhook-certs
+## Service DNS name the API server uses when calling the webhook via
+## clientConfig.service (see test/manual/webhook-service.yaml) - must be in
+## the cert's SAN list or TLS hostname verification fails.
+WEBHOOK_SERVICE_HOSTNAME ?= out-tree-lb-controller-webhook-service.default.svc
 
 .PHONY: webhook-certs
 webhook-certs: ## Generate a self-signed cert/key for running the webhook server locally (make run).
@@ -125,7 +129,7 @@ webhook-certs: ## Generate a self-signed cert/key for running the webhook server
 			-keyout "$(WEBHOOK_CERTS_DIR)/tls.key" \
 			-out "$(WEBHOOK_CERTS_DIR)/tls.crt" \
 			-subj "/CN=localhost" \
-			-addext "subjectAltName=DNS:localhost,IP:127.0.0.1"; \
+			-addext "subjectAltName=DNS:localhost,IP:127.0.0.1,DNS:$(WEBHOOK_SERVICE_HOSTNAME),DNS:$(WEBHOOK_SERVICE_HOSTNAME).cluster.local"; \
 		echo "Generated webhook certs in $(WEBHOOK_CERTS_DIR)"; \
 	fi
 

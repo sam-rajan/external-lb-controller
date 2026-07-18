@@ -19,7 +19,7 @@ const (
 	schemeInternal       = "internal"
 )
 
-// +kubebuilder:webhook:path=/validate-v1-service,mutating=false,failurePolicy=fail,sideEffects=None,groups="",resources=services,verbs=create;update,versions=v1,name=vservice.otlbc.io,admissionReviewVersions=v1
+// +kubebuilder:webhook:path=/validate--v1-service,mutating=false,failurePolicy=fail,sideEffects=None,groups="",resources=services,verbs=create;update,versions=v1,name=vservice.otlbc.io,admissionReviewVersions=v1
 
 // ServiceValidator validates Service objects that use the otlbc.io/lb load balancer class.
 type ServiceValidator struct{}

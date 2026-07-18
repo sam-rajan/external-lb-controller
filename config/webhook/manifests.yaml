@@ -10,7 +10,7 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-v1-service
+      path: /validate--v1-service
   failurePolicy: Fail
   name: vservice.otlbc.io
   rules:

@@ -1,4 +1,4 @@
-# This patch adds the args, ports, and volumes to allow the manager to serve the webhook using cert-manager certs.
+# This patch adds the args, ports, and volumes to allow the manager to serve the webhook using the webhook-server-cert Secret.
 
 # Add the webhook-server-cert volume mount
 - op: add
