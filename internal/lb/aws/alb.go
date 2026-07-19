@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,9 +26,11 @@ const (
 	// Standard AWS load balancer annotations (compatible with aws-load-balancer-controller).
 	annotationSubnets        = "service.beta.kubernetes.io/aws-load-balancer-subnets"
 	annotationSecurityGroups = "service.beta.kubernetes.io/aws-load-balancer-security-groups"
-	annotationScheme         = "service.beta.kubernetes.io/aws-load-balancer-scheme" // "internet-facing" (default) or "internal"
-	annotationLBType         = "service.beta.kubernetes.io/aws-load-balancer-type"   // "nlb" (default) or "alb"
-	annotationLBName         = "service.beta.kubernetes.io/aws-load-balancer-name"   // custom name, defaults to "<namespace>-<name>"
+	annotationScheme         = "service.beta.kubernetes.io/aws-load-balancer-scheme"    // "internet-facing" (default) or "internal"
+	annotationLBType         = "service.beta.kubernetes.io/aws-load-balancer-type"      // "nlb" (default) or "alb"
+	annotationLBName         = "service.beta.kubernetes.io/aws-load-balancer-name"      // custom name, defaults to "<namespace>-<name>"
+	annotationSSLCert        = "service.beta.kubernetes.io/aws-load-balancer-ssl-cert"  // comma-separated ACM cert ARNs; first is the default cert
+	annotationSSLPorts       = "service.beta.kubernetes.io/aws-load-balancer-ssl-ports" // comma-separated ports, or "*"/absent for all ports (only meaningful if ssl-cert is set)
 
 	lbTypeNLB = "nlb"
 	lbTypeALB = "alb"
@@ -458,30 +461,142 @@ func (p *albProvider) ensureListener(ctx context.Context, svc *corev1.Service, a
 		return err
 	}
 
+	protocol, certs := listenerProtocolAndCerts(svc, port.Port)
+	var defaultCert []types.Certificate
+	if len(certs) > 0 {
+		defaultCert = certs[:1]
+	}
+
 	for _, l := range listenersOut.Listeners {
 		if aws.ToInt32(l.Port) == port.Port {
-			// Listener already exists; update its default action to point at tgARN.
+			// Listener already exists; reconcile its protocol/cert and default action.
 			_, err := p.elb.ModifyListener(ctx, &elbv2.ModifyListenerInput{
-				ListenerArn: l.ListenerArn,
+				ListenerArn:  l.ListenerArn,
+				Protocol:     protocol,
+				Certificates: defaultCert,
 				DefaultActions: []types.Action{{
 					Type:           types.ActionTypeEnumForward,
 					TargetGroupArn: aws.String(tgARN),
 				}},
 			})
-			return err
+			if err != nil {
+				return err
+			}
+			return p.reconcileListenerCertificates(ctx, aws.ToString(l.ListenerArn), certs)
 		}
 	}
 
-	_, err = p.elb.CreateListener(ctx, &elbv2.CreateListenerInput{
+	out, err := p.elb.CreateListener(ctx, &elbv2.CreateListenerInput{
 		LoadBalancerArn: aws.String(albARN),
-		Protocol:        backendProtocol(svc),
+		Protocol:        protocol,
 		Port:            aws.Int32(port.Port),
+		Certificates:    defaultCert,
 		DefaultActions: []types.Action{{
 			Type:           types.ActionTypeEnumForward,
 			TargetGroupArn: aws.String(tgARN),
 		}},
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	if len(out.Listeners) == 0 {
+		return nil
+	}
+	return p.reconcileListenerCertificates(ctx, aws.ToString(out.Listeners[0].ListenerArn), certs)
+}
+
+// listenerProtocolAndCerts resolves the listener protocol and ACM certs for
+// a given Service port. SSL is enabled only if annotationSSLCert is set and
+// the port is covered by annotationSSLPorts (absent/"*" means all ports);
+// otherwise it falls back to the existing plaintext backendProtocol.
+func listenerProtocolAndCerts(svc *corev1.Service, port int32) (types.ProtocolEnum, []types.Certificate) {
+	certARNs := splitCSV(svc.Annotations[annotationSSLCert])
+	if len(certARNs) == 0 || !sslEnabledForPort(svc, port) {
+		return backendProtocol(svc), nil
+	}
+
+	certs := make([]types.Certificate, len(certARNs))
+	for i, arn := range certARNs {
+		certs[i] = types.Certificate{CertificateArn: aws.String(arn)}
+	}
+
+	if svc.Annotations[annotationLBType] == lbTypeALB {
+		return types.ProtocolEnumHttps, certs
+	}
+	return types.ProtocolEnumTls, certs
+}
+
+func sslEnabledForPort(svc *corev1.Service, port int32) bool {
+	v := svc.Annotations[annotationSSLPorts]
+	if v == "" || v == "*" {
+		return true
+	}
+	for _, p := range splitCSV(v) {
+		if p == strconv.Itoa(int(port)) {
+			return true
+		}
+	}
+	return false
+}
+
+// reconcileListenerCertificates ensures the listener's additional (SNI)
+// certificates match certs[1:] exactly (certs[0], if any, is the default
+// certificate and is set directly on the listener, not here).
+func (p *albProvider) reconcileListenerCertificates(ctx context.Context, listenerARN string, certs []types.Certificate) error {
+	var desired []types.Certificate
+	if len(certs) > 1 {
+		desired = certs[1:]
+	}
+
+	out, err := p.elb.DescribeListenerCertificates(ctx, &elbv2.DescribeListenerCertificatesInput{
+		ListenerArn: aws.String(listenerARN),
+	})
+	if err != nil {
+		return fmt.Errorf("describe listener certificates: %w", err)
+	}
+
+	desiredARNs := make(map[string]struct{}, len(desired))
+	for _, c := range desired {
+		desiredARNs[aws.ToString(c.CertificateArn)] = struct{}{}
+	}
+
+	currentARNs := make(map[string]struct{})
+	for _, c := range out.Certificates {
+		if aws.ToBool(c.IsDefault) {
+			continue
+		}
+		currentARNs[aws.ToString(c.CertificateArn)] = struct{}{}
+	}
+
+	var toAdd, toRemove []types.Certificate
+	for arn := range desiredARNs {
+		if _, ok := currentARNs[arn]; !ok {
+			toAdd = append(toAdd, types.Certificate{CertificateArn: aws.String(arn)})
+		}
+	}
+	for arn := range currentARNs {
+		if _, ok := desiredARNs[arn]; !ok {
+			toRemove = append(toRemove, types.Certificate{CertificateArn: aws.String(arn)})
+		}
+	}
+
+	if len(toRemove) > 0 {
+		if _, err := p.elb.RemoveListenerCertificates(ctx, &elbv2.RemoveListenerCertificatesInput{
+			ListenerArn:  aws.String(listenerARN),
+			Certificates: toRemove,
+		}); err != nil {
+			return fmt.Errorf("remove stale listener certificates: %w", err)
+		}
+	}
+	if len(toAdd) > 0 {
+		if _, err := p.elb.AddListenerCertificates(ctx, &elbv2.AddListenerCertificatesInput{
+			ListenerArn:  aws.String(listenerARN),
+			Certificates: toAdd,
+		}); err != nil {
+			return fmt.Errorf("add listener certificates: %w", err)
+		}
+	}
+	return nil
 }
 
 func (p *albProvider) DeleteLB(ctx context.Context, svc *corev1.Service) error {
