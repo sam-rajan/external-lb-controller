@@ -37,7 +37,7 @@ import (
 	"samrajan.me/otlbc/internal/controller"
 	"samrajan.me/otlbc/internal/lb"
 	_ "samrajan.me/otlbc/internal/lb/aws" // register AWS ALB provider
-	otlbcwebhook "samrajan.me/otlbc/internal/webhook"
+	servicewebhook "samrajan.me/otlbc/internal/webhook/service"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -87,7 +87,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := otlbcwebhook.SetupServiceValidatorWithManager(mgr); err != nil {
+	if err := servicewebhook.SetupServiceValidatorWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to set up service validator webhook")
 		os.Exit(1)
 	}
