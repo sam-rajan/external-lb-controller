@@ -151,6 +151,9 @@ func (p *albProvider) createALB(ctx context.Context, svc *corev1.Service, ownerT
 		if err != nil {
 			return nil, fmt.Errorf("ensure security group: %w", err)
 		}
+		if err := p.reconcileSecurityGroupIngress(ctx, svc, sgID, vpcID); err != nil {
+			return nil, fmt.Errorf("reconcile security group ingress: %w", err)
+		}
 		sgIDs = []string{sgID}
 	}
 
@@ -203,6 +206,135 @@ func (p *albProvider) ensureSecurityGroup(ctx context.Context, svc *corev1.Servi
 		return "", err
 	}
 	return aws.ToString(created.GroupId), nil
+}
+
+// reconcileSecurityGroupIngress ensures the auto-managed SG allows inbound
+// TCP traffic on each of the Service's listener ports from the resolved
+// source ranges, adding/removing rules to match exactly (this SG is fully
+// owned by the controller, so any rule not in the desired set is stale).
+func (p *albProvider) reconcileSecurityGroupIngress(ctx context.Context, svc *corev1.Service, sgID, vpcID string) error {
+	ranges, err := p.resolveSourceRanges(ctx, svc, vpcID)
+	if err != nil {
+		return fmt.Errorf("resolve source ranges: %w", err)
+	}
+
+	desired := make(map[int32]map[string]struct{}, len(svc.Spec.Ports))
+	for _, port := range svc.Spec.Ports {
+		cidrs := make(map[string]struct{}, len(ranges))
+		for _, r := range ranges {
+			cidrs[r] = struct{}{}
+		}
+		desired[port.Port] = cidrs
+	}
+
+	out, err := p.ec2.DescribeSecurityGroups(ctx, &ec2.DescribeSecurityGroupsInput{
+		GroupIds: []string{sgID},
+	})
+	if err != nil {
+		return fmt.Errorf("describe security group: %w", err)
+	}
+	if len(out.SecurityGroups) == 0 {
+		return fmt.Errorf("security group %s not found", sgID)
+	}
+
+	current := make(map[int32]map[string]struct{})
+	for _, perm := range out.SecurityGroups[0].IpPermissions {
+		if aws.ToString(perm.IpProtocol) != "tcp" || perm.FromPort == nil || perm.ToPort == nil || *perm.FromPort != *perm.ToPort {
+			continue // leave rules we don't manage (non-TCP or port ranges) untouched
+		}
+		port := *perm.FromPort
+		if current[port] == nil {
+			current[port] = make(map[string]struct{})
+		}
+		for _, r := range perm.IpRanges {
+			current[port][aws.ToString(r.CidrIp)] = struct{}{}
+		}
+	}
+
+	var toAdd, toRemove []ec2types.IpPermission
+	for port, cidrs := range desired {
+		var add []ec2types.IpRange
+		for cidr := range cidrs {
+			if _, ok := current[port][cidr]; !ok {
+				add = append(add, ec2types.IpRange{CidrIp: aws.String(cidr)})
+			}
+		}
+		if len(add) > 0 {
+			toAdd = append(toAdd, tcpIpPermission(port, add))
+		}
+	}
+	for port, cidrs := range current {
+		var remove []ec2types.IpRange
+		for cidr := range cidrs {
+			if _, ok := desired[port][cidr]; !ok {
+				remove = append(remove, ec2types.IpRange{CidrIp: aws.String(cidr)})
+			}
+		}
+		if len(remove) > 0 {
+			toRemove = append(toRemove, tcpIpPermission(port, remove))
+		}
+	}
+
+	if len(toRemove) > 0 {
+		if _, err := p.ec2.RevokeSecurityGroupIngress(ctx, &ec2.RevokeSecurityGroupIngressInput{
+			GroupId:       aws.String(sgID),
+			IpPermissions: toRemove,
+		}); err != nil {
+			return fmt.Errorf("revoke stale ingress rules: %w", err)
+		}
+	}
+	if len(toAdd) > 0 {
+		if _, err := p.ec2.AuthorizeSecurityGroupIngress(ctx, &ec2.AuthorizeSecurityGroupIngressInput{
+			GroupId:       aws.String(sgID),
+			IpPermissions: toAdd,
+		}); err != nil {
+			return fmt.Errorf("authorize ingress rules: %w", err)
+		}
+	}
+	return nil
+}
+
+func tcpIpPermission(port int32, ranges []ec2types.IpRange) ec2types.IpPermission {
+	return ec2types.IpPermission{
+		IpProtocol: aws.String("tcp"),
+		FromPort:   aws.Int32(port),
+		ToPort:     aws.Int32(port),
+		IpRanges:   ranges,
+	}
+}
+
+// resolveSourceRanges determines which CIDRs are allowed to reach the load
+// balancer's listeners: svc.Spec.LoadBalancerSourceRanges always wins if set;
+// otherwise internet-facing LBs default to 0.0.0.0/0 and internal LBs default
+// to the VPC's own CIDR block(s).
+func (p *albProvider) resolveSourceRanges(ctx context.Context, svc *corev1.Service, vpcID string) ([]string, error) {
+	if len(svc.Spec.LoadBalancerSourceRanges) > 0 {
+		return svc.Spec.LoadBalancerSourceRanges, nil
+	}
+
+	if svc.Annotations[annotationScheme] != "internal" {
+		return []string{"0.0.0.0/0"}, nil
+	}
+
+	out, err := p.ec2.DescribeVpcs(ctx, &ec2.DescribeVpcsInput{VpcIds: []string{vpcID}})
+	if err != nil {
+		return nil, fmt.Errorf("describe VPC %s: %w", vpcID, err)
+	}
+	if len(out.Vpcs) == 0 {
+		return nil, fmt.Errorf("VPC %s not found", vpcID)
+	}
+
+	var cidrs []string
+	for _, assoc := range out.Vpcs[0].CidrBlockAssociationSet {
+		if assoc.CidrBlockState == nil || assoc.CidrBlockState.State != ec2types.VpcCidrBlockStateCodeAssociated {
+			continue
+		}
+		cidrs = append(cidrs, aws.ToString(assoc.CidrBlock))
+	}
+	if len(cidrs) == 0 {
+		return nil, fmt.Errorf("VPC %s has no associated CIDR blocks", vpcID)
+	}
+	return cidrs, nil
 }
 
 func (p *albProvider) findTargetGroup(ctx context.Context, ownerTag string, servicePort int32) (*types.TargetGroup, error) {
