@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"strings"
 	"time"
 
@@ -25,6 +26,11 @@ const (
 	annotationSubnets        = "service.beta.kubernetes.io/aws-load-balancer-subnets"
 	annotationSecurityGroups = "service.beta.kubernetes.io/aws-load-balancer-security-groups"
 	annotationScheme         = "service.beta.kubernetes.io/aws-load-balancer-scheme" // "internet-facing" (default) or "internal"
+	annotationLBType         = "service.beta.kubernetes.io/aws-load-balancer-type"   // "nlb" (default) or "alb"
+	annotationLBName         = "service.beta.kubernetes.io/aws-load-balancer-name"   // custom name, defaults to "<namespace>-<name>"
+
+	lbTypeNLB = "nlb"
+	lbTypeALB = "alb"
 
 	// Tag applied to every AWS resource managed by this controller.
 	tagOwnerKey = "otlbc.io/service"
@@ -84,7 +90,7 @@ func (p *albProvider) EnsureLB(ctx context.Context, svc *corev1.Service, epSlice
 			return "", fmt.Errorf("sync targets (port %d): %w", port.Port, err)
 		}
 
-		if err := p.ensureListener(ctx, *alb.LoadBalancerArn, *tg.TargetGroupArn, port); err != nil {
+		if err := p.ensureListener(ctx, svc, *alb.LoadBalancerArn, *tg.TargetGroupArn, port); err != nil {
 			return "", fmt.Errorf("ensure listener (port %d): %w", port.Port, err)
 		}
 	}
@@ -154,10 +160,11 @@ func (p *albProvider) createALB(ctx context.Context, svc *corev1.Service, ownerT
 	}
 
 	out, err := p.elb.CreateLoadBalancer(ctx, &elbv2.CreateLoadBalancerInput{
-		Name:           aws.String(albName(svc)),
+		Name:           aws.String(loadBalancerName(svc)),
 		Subnets:        subnetIDs,
 		SecurityGroups: sgIDs,
 		Scheme:         scheme,
+		Type:           loadBalancerType(svc),
 		Tags:           []types.Tag{{Key: aws.String(tagOwnerKey), Value: aws.String(ownerTag)}},
 	})
 	if err != nil {
@@ -182,7 +189,7 @@ func (p *albProvider) ensureSecurityGroup(ctx context.Context, svc *corev1.Servi
 	}
 
 	created, err := p.ec2.CreateSecurityGroup(ctx, &ec2.CreateSecurityGroupInput{
-		GroupName:   aws.String(albName(svc)),
+		GroupName:   aws.String(securityGroupName(svc)),
 		Description: aws.String("Managed by otlbc for " + ownerTag),
 		VpcId:       aws.String(vpcID),
 		TagSpecifications: []ec2types.TagSpecification{{
@@ -245,7 +252,7 @@ func (p *albProvider) createTargetGroup(ctx context.Context, svc *corev1.Service
 	portTag := fmt.Sprintf("%s:%d", ownerTag, port.Port)
 	out, err := p.elb.CreateTargetGroup(ctx, &elbv2.CreateTargetGroupInput{
 		Name:       aws.String(tgName(svc, port.Port)),
-		Protocol:   types.ProtocolEnumHttp,
+		Protocol:   backendProtocol(svc),
 		Port:       aws.Int32(port.TargetPort.IntVal),
 		TargetType: types.TargetTypeEnumIp,
 		VpcId:      aws.String(vpcID),
@@ -311,7 +318,7 @@ func (p *albProvider) syncTargets(ctx context.Context, tgARN string, desired []s
 // Listeners
 // ──────────────────────────────────────────────────────────────────────────────
 
-func (p *albProvider) ensureListener(ctx context.Context, albARN, tgARN string, port corev1.ServicePort) error {
+func (p *albProvider) ensureListener(ctx context.Context, svc *corev1.Service, albARN, tgARN string, port corev1.ServicePort) error {
 	listenersOut, err := p.elb.DescribeListeners(ctx, &elbv2.DescribeListenersInput{
 		LoadBalancerArn: aws.String(albARN),
 	})
@@ -335,7 +342,7 @@ func (p *albProvider) ensureListener(ctx context.Context, albARN, tgARN string, 
 
 	_, err = p.elb.CreateListener(ctx, &elbv2.CreateListenerInput{
 		LoadBalancerArn: aws.String(albARN),
-		Protocol:        types.ProtocolEnumHttp,
+		Protocol:        backendProtocol(svc),
 		Port:            aws.Int32(port.Port),
 		DefaultActions: []types.Action{{
 			Type:           types.ActionTypeEnumForward,
@@ -467,17 +474,74 @@ func (p *albProvider) deleteSecurityGroupWithRetry(ctx context.Context, sgID str
 	return fmt.Errorf("security group %s still has dependencies after %d attempts", sgID, maxAttempts)
 }
 
+// loadBalancerType returns the ELBv2 load balancer type requested via
+// annotationLBType, defaulting to Network Load Balancer (matching the
+// TCP-only port validation enforced by the admission webhook).
+func loadBalancerType(svc *corev1.Service) types.LoadBalancerTypeEnum {
+	if svc.Annotations[annotationLBType] == lbTypeALB {
+		return types.LoadBalancerTypeEnumApplication
+	}
+	return types.LoadBalancerTypeEnumNetwork
+}
+
+// backendProtocol returns the target group / listener protocol matching the
+// load balancer type: TCP for NLB, HTTP for ALB.
+func backendProtocol(svc *corev1.Service) types.ProtocolEnum {
+	if svc.Annotations[annotationLBType] == lbTypeALB {
+		return types.ProtocolEnumHttp
+	}
+	return types.ProtocolEnumTcp
+}
+
 func ownerTagValue(svc *corev1.Service) string {
 	return svc.Namespace + "/" + svc.Name
 }
 
-// albName returns a name ≤32 chars derived from namespace and service name.
-func albName(svc *corev1.Service) string {
-	name := fmt.Sprintf("%s-%s", svc.Namespace, svc.Name)
-	if len(name) > 32 {
-		name = name[:32]
+const (
+	lbNameSuffix = "-lb"
+	sgNameSuffix = "-sg"
+)
+
+// loadBalancerName returns the name to use for the load balancer itself:
+// annotationLBName if set, otherwise "<namespace>-<name>". Either way a "-lb"
+// suffix is appended if not already present, kept within AWS's 32-char limit.
+func loadBalancerName(svc *corev1.Service) string {
+	base := svc.Annotations[annotationLBName]
+	if base == "" {
+		base = fmt.Sprintf("%s-%s", svc.Namespace, svc.Name)
 	}
-	return name
+	return withSuffix(base, lbNameSuffix)
+}
+
+// securityGroupName derives the auto-managed security group's name from the
+// resolved load balancer name, swapping its "-lb" suffix for "-sg" so the two
+// stay paired regardless of whether the LB name came from the annotation or
+// the derived default.
+func securityGroupName(svc *corev1.Service) string {
+	base := strings.TrimSuffix(loadBalancerName(svc), lbNameSuffix)
+	return withSuffix(base, sgNameSuffix)
+}
+
+// withSuffix appends suffix to name (if not already present) while staying
+// within AWS's 32-character name limit. Names that don't fit get a
+// hash-of-the-full-name segment instead of a blind cut, so two names sharing
+// a long common prefix don't collide once truncated, and the cut point can't
+// land on a trailing hyphen.
+func withSuffix(name, suffix string) string {
+	name = strings.TrimSuffix(name, suffix)
+
+	const maxLen = 32
+	full := name + suffix
+	if len(full) <= maxLen {
+		return full
+	}
+
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(full))
+	hash := fmt.Sprintf("-%08x", h.Sum32())
+
+	base := strings.TrimRight(name[:maxLen-len(hash)-len(suffix)], "-")
+	return base + hash + suffix
 }
 
 // tgName returns a name ≤32 chars for a target group.

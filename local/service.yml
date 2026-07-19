@@ -6,6 +6,7 @@ metadata:
     app: web-app
   annotations:
     service.beta.kubernetes.io/aws-load-balancer-subnets: subnet-0123456789abcdef0,subnet-0fedcba9876543210
+    service.beta.kubernetes.io/aws-load-balancer-name: "my-custom-named-lb"
 spec:
   type: LoadBalancer
   loadBalancerClass: otlbc.io/lb
