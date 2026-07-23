@@ -72,7 +72,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	lbManager, err := lb.NewManager(context.Background())
+	lbManager, err := lb.NewManager(context.Background(), lb.ProviderConfig{ClusterName: cfg.ClusterName})
 	if err != nil {
 		setupLog.Error(err, "Failed to detect load balancer provider")
 		os.Exit(1)

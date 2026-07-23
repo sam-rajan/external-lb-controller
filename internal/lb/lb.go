@@ -15,9 +15,9 @@ type Manager struct {
 
 // NewManager iterates all registered Detectors and returns a Manager backed by
 // the first Provider that reports itself as applicable for the current environment.
-func NewManager(ctx context.Context) (*Manager, error) {
+func NewManager(ctx context.Context, cfg ProviderConfig) (*Manager, error) {
 	for _, detect := range registry {
-		if p, ok := detect(ctx); ok {
+		if p, ok := detect(ctx, cfg); ok {
 			return &Manager{provider: p}, nil
 		}
 	}

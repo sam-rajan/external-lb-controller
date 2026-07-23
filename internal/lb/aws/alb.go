@@ -45,31 +45,38 @@ func init() {
 
 // detect tries to load AWS credentials. If successful the controller is
 // running in (or configured for) an AWS environment and the ALB provider is used.
-func detect(ctx context.Context) (lb.Provider, bool) {
-	cfg, err := config.LoadDefaultConfig(ctx)
+func detect(ctx context.Context, providerCfg lb.ProviderConfig) (lb.Provider, bool) {
+	awsCfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		return nil, false
 	}
 	return &albProvider{
-		elb: elbv2.NewFromConfig(cfg),
-		ec2: ec2.NewFromConfig(cfg),
+		elb:         elbv2.NewFromConfig(awsCfg),
+		ec2:         ec2.NewFromConfig(awsCfg),
+		clusterName: providerCfg.ClusterName,
 	}, true
 }
 
 type albProvider struct {
-	elb *elbv2.Client
-	ec2 *ec2.Client
+	elb         *elbv2.Client
+	ec2         *ec2.Client
+	clusterName string
 }
 
 func (p *albProvider) EnsureLB(ctx context.Context, svc *corev1.Service, epSlices []discoveryv1.EndpointSlice) (string, error) {
 	ownerTag := ownerTagValue(svc)
+
+	subnetIDs, err := p.resolveSubnetIDs(ctx, svc)
+	if err != nil {
+		return "", fmt.Errorf("resolve subnets: %w", err)
+	}
 
 	alb, err := p.findALB(ctx, ownerTag)
 	if err != nil {
 		return "", fmt.Errorf("find ALB: %w", err)
 	}
 	if alb == nil {
-		alb, err = p.createALB(ctx, svc, ownerTag)
+		alb, err = p.createALB(ctx, svc, ownerTag, subnetIDs)
 		if err != nil {
 			return "", fmt.Errorf("create ALB: %w", err)
 		}
@@ -83,7 +90,7 @@ func (p *albProvider) EnsureLB(ctx context.Context, svc *corev1.Service, epSlice
 			return "", fmt.Errorf("find target group (port %d): %w", port.Port, err)
 		}
 		if tg == nil {
-			tg, err = p.createTargetGroup(ctx, svc, ownerTag, port)
+			tg, err = p.createTargetGroup(ctx, svc, ownerTag, port, subnetIDs)
 			if err != nil {
 				return "", fmt.Errorf("create target group (port %d): %w", port.Port, err)
 			}
@@ -135,13 +142,7 @@ func (p *albProvider) findALB(ctx context.Context, ownerTag string) (*types.Load
 	return nil, nil
 }
 
-func (p *albProvider) createALB(ctx context.Context, svc *corev1.Service, ownerTag string) (*types.LoadBalancer, error) {
-	subnets, err := requiredAnnotation(svc, annotationSubnets)
-	if err != nil {
-		return nil, err
-	}
-	subnetIDs := splitCSV(subnets)
-
+func (p *albProvider) createALB(ctx context.Context, svc *corev1.Service, ownerTag string, subnetIDs []string) (*types.LoadBalancer, error) {
 	var sgIDs []string
 	if v := svc.Annotations[annotationSecurityGroups]; v != "" {
 		sgIDs = splitCSV(v)
@@ -160,16 +161,11 @@ func (p *albProvider) createALB(ctx context.Context, svc *corev1.Service, ownerT
 		sgIDs = []string{sgID}
 	}
 
-	scheme := types.LoadBalancerSchemeEnumInternetFacing
-	if svc.Annotations[annotationScheme] == "internal" {
-		scheme = types.LoadBalancerSchemeEnumInternal
-	}
-
 	out, err := p.elb.CreateLoadBalancer(ctx, &elbv2.CreateLoadBalancerInput{
 		Name:           aws.String(loadBalancerName(svc)),
 		Subnets:        subnetIDs,
 		SecurityGroups: sgIDs,
-		Scheme:         scheme,
+		Scheme:         loadBalancerScheme(svc),
 		Type:           loadBalancerType(svc),
 		Tags:           []types.Tag{{Key: aws.String(tagOwnerKey), Value: aws.String(ownerTag)}},
 	})
@@ -374,12 +370,8 @@ func (p *albProvider) findTargetGroup(ctx context.Context, ownerTag string, serv
 	return nil, nil
 }
 
-func (p *albProvider) createTargetGroup(ctx context.Context, svc *corev1.Service, ownerTag string, port corev1.ServicePort) (*types.TargetGroup, error) {
-	subnets, err := requiredAnnotation(svc, annotationSubnets)
-	if err != nil {
-		return nil, err
-	}
-	vpcID, err := p.vpcIDFromSubnet(ctx, splitCSV(subnets)[0])
+func (p *albProvider) createTargetGroup(ctx context.Context, svc *corev1.Service, ownerTag string, port corev1.ServicePort, subnetIDs []string) (*types.TargetGroup, error) {
+	vpcID, err := p.vpcIDFromSubnet(ctx, subnetIDs[0])
 	if err != nil {
 		return nil, fmt.Errorf("resolve VPC ID from subnet: %w", err)
 	}
@@ -800,6 +792,67 @@ func tgName(svc *corev1.Service, port int32) string {
 	return name
 }
 
+// loadBalancerScheme resolves the "internet-facing" (default) vs "internal"
+// scheme from annotationScheme.
+func loadBalancerScheme(svc *corev1.Service) types.LoadBalancerSchemeEnum {
+	if svc.Annotations[annotationScheme] == "internal" {
+		return types.LoadBalancerSchemeEnumInternal
+	}
+	return types.LoadBalancerSchemeEnumInternetFacing
+}
+
+// resolveSubnetIDs returns annotationSubnets if set, otherwise discovers
+// subnets by tag for the Service's scheme.
+func (p *albProvider) resolveSubnetIDs(ctx context.Context, svc *corev1.Service) ([]string, error) {
+	if subnets := svc.Annotations[annotationSubnets]; subnets != "" {
+		return splitCSV(subnets), nil
+	}
+	return p.discoverSubnets(ctx, loadBalancerScheme(svc))
+}
+
+const (
+	// Standard EKS subnet tagging convention for auto-discovery.
+	subnetTagRoleInternetFacing = "kubernetes.io/role/elb"
+	subnetTagRoleInternal       = "kubernetes.io/role/internal-elb"
+)
+
+// discoverSubnets finds subnets tagged for this cluster
+// (kubernetes.io/cluster/<clusterName>=shared|owned) and for the requested
+// scheme (kubernetes.io/role/elb for internet-facing, .../internal-elb for
+// internal), used when a Service doesn't set annotationSubnets.
+func (p *albProvider) discoverSubnets(ctx context.Context, scheme types.LoadBalancerSchemeEnum) ([]string, error) {
+	if p.clusterName == "" {
+		return nil, fmt.Errorf("service is missing required annotation %q and no --cluster-name is configured for automatic subnet discovery", annotationSubnets)
+	}
+
+	roleTag := subnetTagRoleInternetFacing
+	if scheme == types.LoadBalancerSchemeEnumInternal {
+		roleTag = subnetTagRoleInternal
+	}
+	clusterTag := "kubernetes.io/cluster/" + p.clusterName
+
+	out, err := p.ec2.DescribeSubnets(ctx, &ec2.DescribeSubnetsInput{
+		Filters: []ec2types.Filter{
+			{Name: aws.String("tag:" + clusterTag), Values: []string{"shared", "owned"}},
+			// "tag-key" matches subnets that have the role tag present,
+			// regardless of its value ("1" or "" are both used in practice).
+			{Name: aws.String("tag-key"), Values: []string{roleTag}},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("describe subnets: %w", err)
+	}
+	if len(out.Subnets) == 0 {
+		return nil, fmt.Errorf("no subnets found tagged %q=shared|owned and %q for cluster %q", clusterTag, roleTag, p.clusterName)
+	}
+
+	ids := make([]string, 0, len(out.Subnets))
+	for _, s := range out.Subnets {
+		ids = append(ids, aws.ToString(s.SubnetId))
+	}
+	return ids, nil
+}
+
 func (p *albProvider) vpcIDFromSubnet(ctx context.Context, subnetID string) (string, error) {
 	out, err := p.ec2.DescribeSubnets(ctx, &ec2.DescribeSubnetsInput{
 		SubnetIds: []string{subnetID},
@@ -822,14 +875,6 @@ func splitCSV(s string) []string {
 		}
 	}
 	return out
-}
-
-func requiredAnnotation(svc *corev1.Service, key string) (string, error) {
-	v, ok := svc.Annotations[key]
-	if !ok || v == "" {
-		return "", fmt.Errorf("service %s/%s is missing required annotation %q", svc.Namespace, svc.Name, key)
-	}
-	return v, nil
 }
 
 // endpointTargets collects all ready endpoint IPs from the given EndpointSlices.

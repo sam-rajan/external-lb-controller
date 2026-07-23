@@ -17,9 +17,17 @@ type Provider interface {
 	DeleteLB(ctx context.Context, svc *corev1.Service) error
 }
 
+// ProviderConfig carries configuration common to all Providers, sourced from
+// controller flags rather than per-Service annotations.
+type ProviderConfig struct {
+	// ClusterName identifies this Kubernetes cluster for tag-based subnet
+	// auto-discovery (kubernetes.io/cluster/<ClusterName>=shared|owned).
+	ClusterName string
+}
+
 // Detector probes the runtime environment and returns a Provider if this
 // implementation is applicable, or (nil, false) if not.
-type Detector func(ctx context.Context) (Provider, bool)
+type Detector func(ctx context.Context, cfg ProviderConfig) (Provider, bool)
 
 var registry []Detector
 

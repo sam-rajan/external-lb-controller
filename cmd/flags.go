@@ -21,6 +21,8 @@ type Config struct {
 	ProbeAddr            string
 	EnableLeaderElection bool
 
+	ClusterName string
+
 	ZapOptions zap.Options
 }
 
@@ -47,6 +49,9 @@ func parseFlags() *Config {
 	flag.StringVar(&cfg.ProbeAddr, "health-probe-bind-address", ":8081", "The address the health probe endpoint binds to.")
 	flag.BoolVar(&cfg.EnableLeaderElection, "leader-elect", false,
 		"Enable leader election to ensure only one active controller manager.")
+
+	flag.StringVar(&cfg.ClusterName, "cluster-name", "",
+		"Name of the Kubernetes cluster, used to auto-discover subnets tagged kubernetes.io/cluster/<cluster-name>=shared|owned when a Service doesn't specify aws-load-balancer-subnets.")
 
 	cfg.ZapOptions.BindFlags(flag.CommandLine)
 	flag.Parse()
