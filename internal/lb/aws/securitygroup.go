@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -13,17 +12,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 	corev1 "k8s.io/api/core/v1"
 )
-
-const sgNameSuffix = "-sg"
-
-// securityGroupName derives the auto-managed security group's name from the
-// resolved load balancer name, swapping its "-lb" suffix for "-sg" so the two
-// stay paired regardless of whether the LB name came from the annotation or
-// the derived default.
-func securityGroupName(svc *corev1.Service) string {
-	base := strings.TrimSuffix(loadBalancerName(svc), lbNameSuffix)
-	return withSuffix(base, sgNameSuffix)
-}
 
 // ensureSecurityGroup finds the auto-managed SG for this service, or creates one.
 func (p *elbProvider) ensureSecurityGroup(ctx context.Context, svc *corev1.Service, ownerTag, vpcID string) (string, error) {

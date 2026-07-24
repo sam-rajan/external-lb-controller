@@ -5,7 +5,6 @@ package aws
 import (
 	"context"
 	"fmt"
-	"hash/fnv"
 	"strconv"
 	"strings"
 	"time"
@@ -170,10 +169,6 @@ func (p *elbProvider) createLoadBalancer(ctx context.Context, svc *corev1.Servic
 	}
 	return &out.LoadBalancers[0], nil
 }
-
-// ──────────────────────────────────────────────────────────────────────────────
-// Listeners
-// ──────────────────────────────────────────────────────────────────────────────
 
 func (p *elbProvider) ensureListener(ctx context.Context, svc *corev1.Service, lbARN, tgARN string, port corev1.ServicePort) error {
 	listenersOut, err := p.elb.DescribeListeners(ctx, &elbv2.DescribeListenersInput{
@@ -406,41 +401,6 @@ func backendProtocol(svc *corev1.Service) types.ProtocolEnum {
 
 func ownerTagValue(svc *corev1.Service) string {
 	return svc.Namespace + "/" + svc.Name
-}
-
-const lbNameSuffix = "-lb"
-
-// loadBalancerName returns the name to use for the load balancer itself:
-// annotationLBName if set, otherwise "<namespace>-<name>". Either way a "-lb"
-// suffix is appended if not already present, kept within AWS's 32-char limit.
-func loadBalancerName(svc *corev1.Service) string {
-	base := svc.Annotations[annotationLBName]
-	if base == "" {
-		base = fmt.Sprintf("%s-%s", svc.Namespace, svc.Name)
-	}
-	return withSuffix(base, lbNameSuffix)
-}
-
-// withSuffix appends suffix to name (if not already present) while staying
-// within AWS's 32-character name limit. Names that don't fit get a
-// hash-of-the-full-name segment instead of a blind cut, so two names sharing
-// a long common prefix don't collide once truncated, and the cut point can't
-// land on a trailing hyphen.
-func withSuffix(name, suffix string) string {
-	name = strings.TrimSuffix(name, suffix)
-
-	const maxLen = 32
-	full := name + suffix
-	if len(full) <= maxLen {
-		return full
-	}
-
-	h := fnv.New32a()
-	_, _ = h.Write([]byte(full))
-	hash := fmt.Sprintf("-%08x", h.Sum32())
-
-	base := strings.TrimRight(name[:maxLen-len(hash)-len(suffix)], "-")
-	return base + hash + suffix
 }
 
 // loadBalancerScheme resolves the "internet-facing" (default) vs "internal"

@@ -10,15 +10,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-// tgName returns a name ≤32 chars for a target group.
-func tgName(svc *corev1.Service, port int32) string {
-	name := fmt.Sprintf("%s-%s-%d", svc.Namespace, svc.Name, port)
-	if len(name) > 32 {
-		name = name[:32]
-	}
-	return name
-}
-
 func (p *elbProvider) findTargetGroup(ctx context.Context, ownerTag string, servicePort int32) (*types.TargetGroup, error) {
 	out, err := p.elb.DescribeTargetGroups(ctx, &elbv2.DescribeTargetGroupsInput{})
 	if err != nil {
