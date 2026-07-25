@@ -5,8 +5,6 @@ package aws
 import (
 	"context"
 	"fmt"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -61,16 +59,19 @@ type elbProvider struct {
 func (p *elbProvider) EnsureLB(ctx context.Context, svc *corev1.Service, epSlices []discoveryv1.EndpointSlice) (string, error) {
 	ownerTag := ownerTagValue(svc)
 
-	subnetIDs, err := p.resolveSubnetIDs(ctx, svc)
-	if err != nil {
-		return "", fmt.Errorf("resolve subnets: %w", err)
-	}
+	var subnetIDs []string
 
 	elb, err := p.findLoadBalancer(ctx, ownerTag)
 	if err != nil {
 		return "", fmt.Errorf("find load balancer: %w", err)
 	}
 	if elb == nil {
+		if len(subnetIDs) == 0 {
+			subnetIDs, err = p.resolveSubnetIDs(ctx, svc)
+			if err != nil {
+				return "", fmt.Errorf("resolve subnets: %w", err)
+			}
+		}
 		elb, err = p.createLoadBalancer(ctx, svc, ownerTag, subnetIDs)
 		if err != nil {
 			return "", fmt.Errorf("create load balancer: %w", err)
@@ -85,6 +86,12 @@ func (p *elbProvider) EnsureLB(ctx context.Context, svc *corev1.Service, epSlice
 			return "", fmt.Errorf("find target group (port %d): %w", port.Port, err)
 		}
 		if tg == nil {
+			if len(subnetIDs) == 0 {
+				subnetIDs, err = p.resolveSubnetIDs(ctx, svc)
+				if err != nil {
+					return "", fmt.Errorf("resolve subnets: %w", err)
+				}
+			}
 			tg, err = p.createTargetGroup(ctx, svc, ownerTag, port, subnetIDs)
 			if err != nil {
 				return "", fmt.Errorf("create target group (port %d): %w", port.Port, err)
@@ -170,152 +177,6 @@ func (p *elbProvider) createLoadBalancer(ctx context.Context, svc *corev1.Servic
 	return &out.LoadBalancers[0], nil
 }
 
-func (p *elbProvider) ensureListener(ctx context.Context, svc *corev1.Service, lbARN, tgARN string, port corev1.ServicePort) error {
-	listenersOut, err := p.elb.DescribeListeners(ctx, &elbv2.DescribeListenersInput{
-		LoadBalancerArn: aws.String(lbARN),
-	})
-	if err != nil {
-		return err
-	}
-
-	protocol, certs := listenerProtocolAndCerts(svc, port.Port)
-	var defaultCert []types.Certificate
-	if len(certs) > 0 {
-		defaultCert = certs[:1]
-	}
-
-	for _, l := range listenersOut.Listeners {
-		if aws.ToInt32(l.Port) == port.Port {
-			// Listener already exists; reconcile its protocol/cert and default action.
-			_, err := p.elb.ModifyListener(ctx, &elbv2.ModifyListenerInput{
-				ListenerArn:  l.ListenerArn,
-				Protocol:     protocol,
-				Certificates: defaultCert,
-				DefaultActions: []types.Action{{
-					Type:           types.ActionTypeEnumForward,
-					TargetGroupArn: aws.String(tgARN),
-				}},
-			})
-			if err != nil {
-				return err
-			}
-			return p.reconcileListenerCertificates(ctx, aws.ToString(l.ListenerArn), certs)
-		}
-	}
-
-	out, err := p.elb.CreateListener(ctx, &elbv2.CreateListenerInput{
-		LoadBalancerArn: aws.String(lbARN),
-		Protocol:        protocol,
-		Port:            aws.Int32(port.Port),
-		Certificates:    defaultCert,
-		DefaultActions: []types.Action{{
-			Type:           types.ActionTypeEnumForward,
-			TargetGroupArn: aws.String(tgARN),
-		}},
-	})
-	if err != nil {
-		return err
-	}
-	if len(out.Listeners) == 0 {
-		return nil
-	}
-	return p.reconcileListenerCertificates(ctx, aws.ToString(out.Listeners[0].ListenerArn), certs)
-}
-
-// listenerProtocolAndCerts resolves the listener protocol and ACM certs for
-// a given Service port. SSL is enabled only if annotationSSLCert is set and
-// the port is covered by annotationSSLPorts (absent/"*" means all ports);
-// otherwise it falls back to the existing plaintext backendProtocol.
-func listenerProtocolAndCerts(svc *corev1.Service, port int32) (types.ProtocolEnum, []types.Certificate) {
-	certARNs := splitCSV(svc.Annotations[annotationSSLCert])
-	if len(certARNs) == 0 || !sslEnabledForPort(svc, port) {
-		return backendProtocol(svc), nil
-	}
-
-	certs := make([]types.Certificate, len(certARNs))
-	for i, arn := range certARNs {
-		certs[i] = types.Certificate{CertificateArn: aws.String(arn)}
-	}
-
-	if svc.Annotations[annotationLBType] == lbTypeALB {
-		return albSSLProtocol, certs
-	}
-	return nlbSSLProtocol, certs
-}
-
-func sslEnabledForPort(svc *corev1.Service, port int32) bool {
-	v := svc.Annotations[annotationSSLPorts]
-	if v == "" || v == "*" {
-		return true
-	}
-	for _, p := range splitCSV(v) {
-		if p == strconv.Itoa(int(port)) {
-			return true
-		}
-	}
-	return false
-}
-
-// reconcileListenerCertificates ensures the listener's additional (SNI)
-// certificates match certs[1:] exactly (certs[0], if any, is the default
-// certificate and is set directly on the listener, not here).
-func (p *elbProvider) reconcileListenerCertificates(ctx context.Context, listenerARN string, certs []types.Certificate) error {
-	var desired []types.Certificate
-	if len(certs) > 1 {
-		desired = certs[1:]
-	}
-
-	out, err := p.elb.DescribeListenerCertificates(ctx, &elbv2.DescribeListenerCertificatesInput{
-		ListenerArn: aws.String(listenerARN),
-	})
-	if err != nil {
-		return fmt.Errorf("describe listener certificates: %w", err)
-	}
-
-	desiredARNs := make(map[string]struct{}, len(desired))
-	for _, c := range desired {
-		desiredARNs[aws.ToString(c.CertificateArn)] = struct{}{}
-	}
-
-	currentARNs := make(map[string]struct{})
-	for _, c := range out.Certificates {
-		if aws.ToBool(c.IsDefault) {
-			continue
-		}
-		currentARNs[aws.ToString(c.CertificateArn)] = struct{}{}
-	}
-
-	var toAdd, toRemove []types.Certificate
-	for arn := range desiredARNs {
-		if _, ok := currentARNs[arn]; !ok {
-			toAdd = append(toAdd, types.Certificate{CertificateArn: aws.String(arn)})
-		}
-	}
-	for arn := range currentARNs {
-		if _, ok := desiredARNs[arn]; !ok {
-			toRemove = append(toRemove, types.Certificate{CertificateArn: aws.String(arn)})
-		}
-	}
-
-	if len(toRemove) > 0 {
-		if _, err := p.elb.RemoveListenerCertificates(ctx, &elbv2.RemoveListenerCertificatesInput{
-			ListenerArn:  aws.String(listenerARN),
-			Certificates: toRemove,
-		}); err != nil {
-			return fmt.Errorf("remove stale listener certificates: %w", err)
-		}
-	}
-	if len(toAdd) > 0 {
-		if _, err := p.elb.AddListenerCertificates(ctx, &elbv2.AddListenerCertificatesInput{
-			ListenerArn:  aws.String(listenerARN),
-			Certificates: toAdd,
-		}); err != nil {
-			return fmt.Errorf("add listener certificates: %w", err)
-		}
-	}
-	return nil
-}
-
 func (p *elbProvider) DeleteLB(ctx context.Context, svc *corev1.Service) error {
 	ownerTag := ownerTagValue(svc)
 
@@ -399,10 +260,6 @@ func backendProtocol(svc *corev1.Service) types.ProtocolEnum {
 	return nlbBackendProtocol
 }
 
-func ownerTagValue(svc *corev1.Service) string {
-	return svc.Namespace + "/" + svc.Name
-}
-
 // loadBalancerScheme resolves the "internet-facing" (default) vs "internal"
 // scheme from annotationScheme.
 func loadBalancerScheme(svc *corev1.Service) types.LoadBalancerSchemeEnum {
@@ -410,29 +267,4 @@ func loadBalancerScheme(svc *corev1.Service) types.LoadBalancerSchemeEnum {
 		return types.LoadBalancerSchemeEnumInternal
 	}
 	return types.LoadBalancerSchemeEnumInternetFacing
-}
-
-func splitCSV(s string) []string {
-	parts := strings.Split(s, ",")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		if t := strings.TrimSpace(p); t != "" {
-			out = append(out, t)
-		}
-	}
-	return out
-}
-
-// endpointTargets collects all ready endpoint IPs from the given EndpointSlices.
-func endpointTargets(epSlices []discoveryv1.EndpointSlice) []string {
-	var ips []string
-	for _, eps := range epSlices {
-		for _, ep := range eps.Endpoints {
-			if ep.Conditions.Ready == nil || !*ep.Conditions.Ready {
-				continue
-			}
-			ips = append(ips, ep.Addresses...)
-		}
-	}
-	return ips
 }

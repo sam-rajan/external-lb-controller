@@ -11,6 +11,12 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
+const (
+	// Standard EKS subnet tagging
+	subnetTagRoleInternetFacing = "kubernetes.io/role/elb"
+	subnetTagRoleInternal       = "kubernetes.io/role/internal-elb"
+)
+
 // resolveSubnetIDs returns annotationSubnets if set, otherwise discovers
 // subnets by tag for the Service's scheme.
 func (p *elbProvider) resolveSubnetIDs(ctx context.Context, svc *corev1.Service) ([]string, error) {
@@ -20,16 +26,6 @@ func (p *elbProvider) resolveSubnetIDs(ctx context.Context, svc *corev1.Service)
 	return p.discoverSubnets(ctx, loadBalancerScheme(svc))
 }
 
-const (
-	// Standard EKS subnet tagging convention for auto-discovery.
-	subnetTagRoleInternetFacing = "kubernetes.io/role/elb"
-	subnetTagRoleInternal       = "kubernetes.io/role/internal-elb"
-)
-
-// discoverSubnets finds subnets tagged for this cluster
-// (kubernetes.io/cluster/<clusterName>=shared|owned) and for the requested
-// scheme (kubernetes.io/role/elb for internet-facing, .../internal-elb for
-// internal), used when a Service doesn't set annotationSubnets.
 func (p *elbProvider) discoverSubnets(ctx context.Context, scheme types.LoadBalancerSchemeEnum) ([]string, error) {
 	if p.clusterName == "" {
 		return nil, fmt.Errorf("service is missing required annotation %q and no --cluster-name is configured for automatic subnet discovery", annotationSubnets)
@@ -44,8 +40,6 @@ func (p *elbProvider) discoverSubnets(ctx context.Context, scheme types.LoadBala
 	out, err := p.ec2.DescribeSubnets(ctx, &ec2.DescribeSubnetsInput{
 		Filters: []ec2types.Filter{
 			{Name: aws.String("tag:" + clusterTag), Values: []string{"shared", "owned"}},
-			// "tag-key" matches subnets that have the role tag present,
-			// regardless of its value ("1" or "" are both used in practice).
 			{Name: aws.String("tag-key"), Values: []string{roleTag}},
 		},
 	})
