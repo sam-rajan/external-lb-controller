@@ -12,14 +12,6 @@ import (
 
 // +kubebuilder:rbac:groups=core,resources=nodes,verbs=get;list;watch
 
-// resolveTargets returns the target IDs to register in the Service's target
-// group(s) and a function mapping a Service port to the port those targets
-// should be registered on, based on annotationTargetType:
-//   - "ip": pod IPs from ready endpoints, registered on the pod's container
-//     port (TargetPort).
-//   - "instance" (default): EC2 instance IDs for nodes hosting a ready
-//     endpoint, registered on the Service's NodePort - kube-proxy forwards
-//     NodePort traffic to the right pod regardless of which node it landed on.
 func (p *elbProvider) resolveTargets(ctx context.Context, svc *corev1.Service, epSlices []discoveryv1.EndpointSlice) ([]string, func(corev1.ServicePort) int, error) {
 	if svc.Annotations[annotationTargetType] == targetTypeIP {
 		return endpointTargets(epSlices), func(port corev1.ServicePort) int { return int(port.TargetPort.IntVal) }, nil

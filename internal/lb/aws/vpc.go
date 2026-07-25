@@ -79,7 +79,7 @@ func (p *elbProvider) resolveSourceRanges(ctx context.Context, svc *corev1.Servi
 		return svc.Spec.LoadBalancerSourceRanges, nil
 	}
 
-	if svc.Annotations[annotationScheme] != "internal" {
+	if svc.Annotations[annotationScheme] != schemeInternal {
 		return []string{"0.0.0.0/0"}, nil
 	}
 
