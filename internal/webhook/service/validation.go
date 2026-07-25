@@ -10,16 +10,20 @@ import (
 )
 
 const (
-	lbClass          = "otlbc.io/lb"
-	annotationScheme = "service.beta.kubernetes.io/aws-load-balancer-scheme"
-	annotationLBType = "service.beta.kubernetes.io/aws-load-balancer-type"
-	annotationLBName = "service.beta.kubernetes.io/aws-load-balancer-name"
+	lbClass              = "otlbc.io/lb"
+	annotationScheme     = "service.beta.kubernetes.io/aws-load-balancer-scheme"
+	annotationLBType     = "service.beta.kubernetes.io/aws-load-balancer-type"
+	annotationLBName     = "service.beta.kubernetes.io/aws-load-balancer-name"
+	annotationTargetType = "service.beta.kubernetes.io/aws-load-balancer-target-type"
 
 	schemeInternetFacing = "internet-facing"
 	schemeInternal       = "internal"
 
 	lbTypeNLB = "nlb"
 	lbTypeALB = "alb"
+
+	targetTypeInstance = "instance"
+	targetTypeIP       = "ip"
 )
 
 // lbNamePattern matches AWS's ELBv2 load balancer naming rules: up to 32
@@ -65,6 +69,13 @@ func validate(svc *corev1.Service) (admission.Warnings, error) {
 		if !lbNamePattern.MatchString(name) {
 			errs = append(errs, fmt.Sprintf("annotation %q must be 1-32 alphanumeric/hyphen characters and must not start or end with a hyphen, got %q",
 				annotationLBName, name))
+		}
+	}
+
+	if targetType, ok := svc.Annotations[annotationTargetType]; ok {
+		if targetType != targetTypeInstance && targetType != targetTypeIP {
+			errs = append(errs, fmt.Sprintf("annotation %q must be %q or %q, got %q",
+				annotationTargetType, targetTypeInstance, targetTypeIP, targetType))
 		}
 	}
 

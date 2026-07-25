@@ -50,12 +50,17 @@ func (p *elbProvider) createTargetGroup(ctx context.Context, svc *corev1.Service
 		return nil, fmt.Errorf("resolve VPC ID from subnet: %w", err)
 	}
 
+	groupPort := port.TargetPort.IntVal
+	if targetType(svc) == types.TargetTypeEnumInstance {
+		groupPort = port.NodePort
+	}
+
 	portTag := fmt.Sprintf("%s:%d", ownerTag, port.Port)
 	out, err := p.elb.CreateTargetGroup(ctx, &elbv2.CreateTargetGroupInput{
 		Name:       aws.String(tgName(svc, port.Port)),
 		Protocol:   backendProtocol(svc),
-		Port:       aws.Int32(port.TargetPort.IntVal),
-		TargetType: types.TargetTypeEnumIp,
+		Port:       aws.Int32(groupPort),
+		TargetType: targetType(svc),
 		VpcId:      aws.String(vpcID),
 		Tags:       []types.Tag{{Key: aws.String(tagOwnerKey), Value: aws.String(portTag)}},
 	})

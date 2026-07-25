@@ -61,9 +61,9 @@ func (r *ServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// Guard: only handle services that still match our class (predicate covers
-	// events but the object may have changed by the time we reconcile).
+	// Ensure that the service has the lbClassname and hence owned by us
 	if !r.ownedByUs(svc) {
+		logf.FromContext(ctx).V(1).Info("Service is not owned by otlbc", svc.Name)
 		return ctrl.Result{}, nil
 	}
 
@@ -75,8 +75,8 @@ func (r *ServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 }
 
 func (r *ServiceReconciler) reconcileUpsert(ctx context.Context, svc *corev1.Service) (ctrl.Result, error) {
-	// Add finalizer so we can clean up the LB on deletion.
-	if !containsString(svc.Finalizers, lbFinalizer) {
+	// Add finalizer so we can get the responsibility of the deletion.
+	if !slices.Contains(svc.Finalizers, lbFinalizer) {
 		svc.Finalizers = append(svc.Finalizers, lbFinalizer)
 		if err := r.Update(ctx, svc); err != nil {
 			return ctrl.Result{}, err
@@ -115,7 +115,7 @@ func (r *ServiceReconciler) endpointSlicesForService(ctx context.Context, svc *c
 }
 
 func (r *ServiceReconciler) reconcileDelete(ctx context.Context, svc *corev1.Service) (ctrl.Result, error) {
-	if !containsString(svc.Finalizers, lbFinalizer) {
+	if !slices.Contains(svc.Finalizers, lbFinalizer) {
 		return ctrl.Result{}, nil
 	}
 
@@ -125,7 +125,7 @@ func (r *ServiceReconciler) reconcileDelete(ctx context.Context, svc *corev1.Ser
 		return ctrl.Result{}, err
 	}
 
-	svc.Finalizers = removeString(svc.Finalizers, lbFinalizer)
+	svc.Finalizers = slices.DeleteFunc(svc.Finalizers, func(f string) bool { return f == lbFinalizer })
 	return ctrl.Result{}, r.Update(ctx, svc)
 }
 
@@ -139,14 +139,6 @@ func (r *ServiceReconciler) ownedByUs(svc *corev1.Service) bool {
 	return svc.Spec.Type == corev1.ServiceTypeLoadBalancer &&
 		svc.Spec.LoadBalancerClass != nil &&
 		*svc.Spec.LoadBalancerClass == lbClass
-}
-
-func containsString(slice []string, s string) bool {
-	return slices.Contains(slice, s)
-}
-
-func removeString(slice []string, s string) []string {
-	return slices.DeleteFunc(slice, func(v string) bool { return v == s })
 }
 
 // SetupWithManager sets up the controller with the Manager.

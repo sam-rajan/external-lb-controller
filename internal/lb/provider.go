@@ -5,6 +5,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // Provider manages the lifecycle of a cloud load balancer for a Kubernetes Service.
@@ -21,4 +22,8 @@ type Provider interface {
 // controller flags rather than per-Service annotations.
 type ProviderConfig struct {
 	ClusterName string
+
+	// K8sClient lets a Provider read cluster state (e.g. Node objects to
+	// resolve instance IDs for node/instance-mode target registration).
+	K8sClient client.Client
 }

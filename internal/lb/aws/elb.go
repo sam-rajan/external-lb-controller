@@ -14,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"samrajan.me/otlbc/internal/lb"
 )
@@ -22,11 +23,15 @@ const (
 	// Standard AWS load balancer annotations (compatible with aws-load-balancer-controller).
 	annotationSubnets        = "service.beta.kubernetes.io/aws-load-balancer-subnets"
 	annotationSecurityGroups = "service.beta.kubernetes.io/aws-load-balancer-security-groups"
-	annotationScheme         = "service.beta.kubernetes.io/aws-load-balancer-scheme"    // "internet-facing" (default) or "internal"
-	annotationLBType         = "service.beta.kubernetes.io/aws-load-balancer-type"      // "nlb" (default) or "alb"
-	annotationLBName         = "service.beta.kubernetes.io/aws-load-balancer-name"      // custom name, defaults to "<namespace>-<name>"
-	annotationSSLCert        = "service.beta.kubernetes.io/aws-load-balancer-ssl-cert"  // comma-separated ACM cert ARNs; first is the default cert
-	annotationSSLPorts       = "service.beta.kubernetes.io/aws-load-balancer-ssl-ports" // comma-separated ports, or "*"/absent for all ports (only meaningful if ssl-cert is set)
+	annotationScheme         = "service.beta.kubernetes.io/aws-load-balancer-scheme"      // "internet-facing" (default) or "internal"
+	annotationLBType         = "service.beta.kubernetes.io/aws-load-balancer-type"        // "nlb" (default) or "alb"
+	annotationLBName         = "service.beta.kubernetes.io/aws-load-balancer-name"        // custom name, defaults to "<namespace>-<name>"
+	annotationSSLCert        = "service.beta.kubernetes.io/aws-load-balancer-ssl-cert"    // comma-separated ACM cert ARNs; first is the default cert
+	annotationSSLPorts       = "service.beta.kubernetes.io/aws-load-balancer-ssl-ports"   // comma-separated ports, or "*"/absent for all ports (only meaningful if ssl-cert is set)
+	annotationTargetType     = "service.beta.kubernetes.io/aws-load-balancer-target-type" // "instance" (default) or "ip"
+
+	targetTypeInstance = "instance"
+	targetTypeIP       = "ip"
 
 	// Tag applied to every AWS resource managed by this controller.
 	tagOwnerKey = "otlbc.io/service"
@@ -47,6 +52,7 @@ func detect(ctx context.Context, providerCfg lb.ProviderConfig) (lb.Provider, bo
 		elb:         elbv2.NewFromConfig(awsCfg),
 		ec2:         ec2.NewFromConfig(awsCfg),
 		clusterName: providerCfg.ClusterName,
+		k8sClient:   providerCfg.K8sClient,
 	}, true
 }
 
@@ -54,6 +60,16 @@ type elbProvider struct {
 	elb         *elbv2.Client
 	ec2         *ec2.Client
 	clusterName string
+	k8sClient   client.Client
+}
+
+// targetType resolves the ELBv2 target type requested via annotationTargetType,
+// defaulting to "instance" (register nodes + NodePort; see node.go).
+func targetType(svc *corev1.Service) types.TargetTypeEnum {
+	if svc.Annotations[annotationTargetType] == targetTypeIP {
+		return types.TargetTypeEnumIp
+	}
+	return types.TargetTypeEnumInstance
 }
 
 func (p *elbProvider) EnsureLB(ctx context.Context, svc *corev1.Service, epSlices []discoveryv1.EndpointSlice) (string, error) {
@@ -78,7 +94,10 @@ func (p *elbProvider) EnsureLB(ctx context.Context, svc *corev1.Service, epSlice
 		}
 	}
 
-	targets := endpointTargets(epSlices)
+	targets, targetPort, err := p.resolveTargets(ctx, svc, epSlices)
+	if err != nil {
+		return "", fmt.Errorf("resolve targets: %w", err)
+	}
 
 	for _, port := range svc.Spec.Ports {
 		tg, err := p.findTargetGroup(ctx, ownerTag, port.Port)
@@ -98,7 +117,7 @@ func (p *elbProvider) EnsureLB(ctx context.Context, svc *corev1.Service, epSlice
 			}
 		}
 
-		if err := p.syncTargets(ctx, *tg.TargetGroupArn, targets, int(port.TargetPort.IntVal)); err != nil {
+		if err := p.syncTargets(ctx, *tg.TargetGroupArn, targets, targetPort(port)); err != nil {
 			return "", fmt.Errorf("sync targets (port %d): %w", port.Port, err)
 		}
 
