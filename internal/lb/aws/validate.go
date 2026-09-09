@@ -6,7 +6,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
-	"samrajan.me/otlbc/internal/lb"
+	"github.com/sam-rajan/out-tree-loadbalancer-controller/internal/lb"
 )
 
 func init() {

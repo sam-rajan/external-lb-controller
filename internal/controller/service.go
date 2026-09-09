@@ -33,7 +33,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	"samrajan.me/otlbc/internal/lb"
+	"github.com/sam-rajan/out-tree-loadbalancer-controller/internal/lb"
 )
 
 const (

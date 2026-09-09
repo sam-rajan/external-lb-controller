@@ -3,11 +3,11 @@
 # and allow the plugins properly work.
 # More info: https://book.kubebuilder.io/reference/project-config.html
 cliVersion: 4.14.0
-domain: samrajan.me
+domain: otlbc.io
 layout:
 - go.kubebuilder.io/v4
 projectName: out-tree-lb-controller
-repo: samrajan.me/otlbc
+repo: github.com/sam-rajan/out-tree-loadbalancer-controller
 resources:
 - controller: true
   core: true

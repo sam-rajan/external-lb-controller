@@ -8,7 +8,7 @@ import (
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"samrajan.me/otlbc/internal/lb"
+	"github.com/sam-rajan/out-tree-loadbalancer-controller/internal/lb"
 )
 
 const (

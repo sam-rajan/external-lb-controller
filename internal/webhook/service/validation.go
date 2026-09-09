@@ -7,7 +7,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	"samrajan.me/otlbc/internal/lb"
+	"github.com/sam-rajan/out-tree-loadbalancer-controller/internal/lb"
 )
 
 const lbClass = "otlbc.io/lb"

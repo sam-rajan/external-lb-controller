@@ -34,10 +34,10 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	"samrajan.me/otlbc/internal/controller"
-	"samrajan.me/otlbc/internal/lb"
-	_ "samrajan.me/otlbc/internal/lb/aws" // register AWS ALB provider
-	servicewebhook "samrajan.me/otlbc/internal/webhook/service"
+	"github.com/sam-rajan/out-tree-loadbalancer-controller/internal/controller"
+	"github.com/sam-rajan/out-tree-loadbalancer-controller/internal/lb"
+	_ "github.com/sam-rajan/out-tree-loadbalancer-controller/internal/lb/aws" // register AWS ELBv2 provider
+	servicewebhook "github.com/sam-rajan/out-tree-loadbalancer-controller/internal/webhook/service"
 	// +kubebuilder:scaffold:imports
 )
 

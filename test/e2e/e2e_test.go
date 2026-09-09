@@ -30,7 +30,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"samrajan.me/otlbc/test/utils"
+	"github.com/sam-rajan/out-tree-loadbalancer-controller/test/utils"
 )
 
 // namespace where the project is deployed in
