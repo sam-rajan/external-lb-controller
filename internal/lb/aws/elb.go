@@ -73,28 +73,33 @@ func (p *elbProvider) EnsureLB(ctx context.Context, svc *corev1.Service, epSlice
 
 // findLoadBalancer returns the load balancer tagged with ownerTag, or nil if none exists.
 func (p *elbProvider) findLoadBalancer(ctx context.Context, ownerTag string) (*types.LoadBalancer, error) {
-	out, err := p.elb.DescribeLoadBalancers(ctx, &elbv2.DescribeLoadBalancersInput{})
-	if err != nil {
-		return nil, err
+	var allLBs []types.LoadBalancer
+	paginator := elbv2.NewDescribeLoadBalancersPaginator(p.elb, &elbv2.DescribeLoadBalancersInput{})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		allLBs = append(allLBs, page.LoadBalancers...)
 	}
-	if len(out.LoadBalancers) == 0 {
+	if len(allLBs) == 0 {
 		return nil, nil
 	}
 
-	arns := make([]string, 0, len(out.LoadBalancers))
-	for _, a := range out.LoadBalancers {
+	arns := make([]string, 0, len(allLBs))
+	for _, a := range allLBs {
 		arns = append(arns, *a.LoadBalancerArn)
 	}
 
-	tagsOut, err := p.elb.DescribeTags(ctx, &elbv2.DescribeTagsInput{ResourceArns: arns})
+	tagDescriptions, err := p.describeTags(ctx, arns)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, td := range tagsOut.TagDescriptions {
+	for _, td := range tagDescriptions {
 		for _, t := range td.Tags {
 			if aws.ToString(t.Key) == tagOwnerKey && aws.ToString(t.Value) == ownerTag {
-				for _, a := range out.LoadBalancers {
+				for _, a := range allLBs {
 					if aws.ToString(a.LoadBalancerArn) == aws.ToString(td.ResourceArn) {
 						return &a, nil
 					}
@@ -150,13 +155,18 @@ func (p *elbProvider) DeleteLB(ctx context.Context, svc *corev1.Service) error {
 	}
 
 	// Delete listeners first (required before deleting the load balancer).
-	listenersOut, err := p.elb.DescribeListeners(ctx, &elbv2.DescribeListenersInput{
+	var listeners []types.Listener
+	listenersPaginator := elbv2.NewDescribeListenersPaginator(p.elb, &elbv2.DescribeListenersInput{
 		LoadBalancerArn: elb.LoadBalancerArn,
 	})
-	if err != nil {
-		return fmt.Errorf("describe listeners: %w", err)
+	for listenersPaginator.HasMorePages() {
+		page, err := listenersPaginator.NextPage(ctx)
+		if err != nil {
+			return fmt.Errorf("describe listeners: %w", err)
+		}
+		listeners = append(listeners, page.Listeners...)
 	}
-	for _, l := range listenersOut.Listeners {
+	for _, l := range listeners {
 		if _, err := p.elb.DeleteListener(ctx, &elbv2.DeleteListenerInput{
 			ListenerArn: l.ListenerArn,
 		}); err != nil {

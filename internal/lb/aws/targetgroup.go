@@ -11,29 +11,34 @@ import (
 )
 
 func (p *elbProvider) findTargetGroup(ctx context.Context, ownerTag string, servicePort int32) (*types.TargetGroup, error) {
-	out, err := p.elb.DescribeTargetGroups(ctx, &elbv2.DescribeTargetGroupsInput{})
-	if err != nil {
-		return nil, err
+	var allTGs []types.TargetGroup
+	paginator := elbv2.NewDescribeTargetGroupsPaginator(p.elb, &elbv2.DescribeTargetGroupsInput{})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		allTGs = append(allTGs, page.TargetGroups...)
 	}
-	if len(out.TargetGroups) == 0 {
+	if len(allTGs) == 0 {
 		return nil, nil
 	}
 
-	arns := make([]string, 0, len(out.TargetGroups))
-	for _, tg := range out.TargetGroups {
+	arns := make([]string, 0, len(allTGs))
+	for _, tg := range allTGs {
 		arns = append(arns, *tg.TargetGroupArn)
 	}
 
-	tagsOut, err := p.elb.DescribeTags(ctx, &elbv2.DescribeTagsInput{ResourceArns: arns})
+	tagDescriptions, err := p.describeTags(ctx, arns)
 	if err != nil {
 		return nil, err
 	}
 
 	portTag := fmt.Sprintf("%s:%d", ownerTag, servicePort)
-	for _, td := range tagsOut.TagDescriptions {
+	for _, td := range tagDescriptions {
 		for _, t := range td.Tags {
 			if aws.ToString(t.Key) == tagOwnerKey && aws.ToString(t.Value) == portTag {
-				for _, tg := range out.TargetGroups {
+				for _, tg := range allTGs {
 					if aws.ToString(tg.TargetGroupArn) == aws.ToString(td.ResourceArn) {
 						return &tg, nil
 					}

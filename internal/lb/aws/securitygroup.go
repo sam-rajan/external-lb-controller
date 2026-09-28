@@ -15,17 +15,22 @@ import (
 
 // ensureSecurityGroup finds the auto-managed SG for this service, or creates one.
 func (p *elbProvider) ensureSecurityGroup(ctx context.Context, svc *corev1.Service, ownerTag, vpcID string) (string, error) {
-	out, err := p.ec2.DescribeSecurityGroups(ctx, &ec2.DescribeSecurityGroupsInput{
+	var sgs []ec2types.SecurityGroup
+	paginator := ec2.NewDescribeSecurityGroupsPaginator(p.ec2, &ec2.DescribeSecurityGroupsInput{
 		Filters: []ec2types.Filter{
 			{Name: aws.String("vpc-id"), Values: []string{vpcID}},
 			{Name: aws.String("tag:" + tagOwnerKey), Values: []string{ownerTag}},
 		},
 	})
-	if err != nil {
-		return "", err
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return "", err
+		}
+		sgs = append(sgs, page.SecurityGroups...)
 	}
-	if len(out.SecurityGroups) > 0 {
-		return aws.ToString(out.SecurityGroups[0].GroupId), nil
+	if len(sgs) > 0 {
+		return aws.ToString(sgs[0].GroupId), nil
 	}
 
 	created, err := p.ec2.CreateSecurityGroup(ctx, &ec2.CreateSecurityGroupInput{
@@ -155,17 +160,25 @@ func (p *elbProvider) deleteMangedSecurityGroup(ctx context.Context, ownerTag st
 		return nil
 	}
 
-	out, err := p.ec2.DescribeSecurityGroups(ctx, &ec2.DescribeSecurityGroupsInput{
+	var sgs []ec2types.SecurityGroup
+	paginator := ec2.NewDescribeSecurityGroupsPaginator(p.ec2, &ec2.DescribeSecurityGroupsInput{
 		Filters: []ec2types.Filter{
 			{Name: aws.String("vpc-id"), Values: []string{vpcID}},
 			{Name: aws.String("tag:" + tagOwnerKey), Values: []string{ownerTag}},
 		},
 	})
-	if err != nil || len(out.SecurityGroups) == 0 {
-		return err
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return err
+		}
+		sgs = append(sgs, page.SecurityGroups...)
+	}
+	if len(sgs) == 0 {
+		return nil
 	}
 
-	for _, sg := range out.SecurityGroups {
+	for _, sg := range sgs {
 		if err := p.deleteSecurityGroupWithRetry(ctx, aws.ToString(sg.GroupId)); err != nil {
 			return err
 		}

@@ -37,21 +37,26 @@ func (p *elbProvider) discoverSubnets(ctx context.Context, scheme types.LoadBala
 	}
 	clusterTag := "kubernetes.io/cluster/" + p.clusterName
 
-	out, err := p.ec2.DescribeSubnets(ctx, &ec2.DescribeSubnetsInput{
+	var subnets []ec2types.Subnet
+	paginator := ec2.NewDescribeSubnetsPaginator(p.ec2, &ec2.DescribeSubnetsInput{
 		Filters: []ec2types.Filter{
 			{Name: aws.String("tag:" + clusterTag), Values: []string{"shared", "owned"}},
 			{Name: aws.String("tag-key"), Values: []string{roleTag}},
 		},
 	})
-	if err != nil {
-		return nil, fmt.Errorf("describe subnets: %w", err)
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("describe subnets: %w", err)
+		}
+		subnets = append(subnets, page.Subnets...)
 	}
-	if len(out.Subnets) == 0 {
+	if len(subnets) == 0 {
 		return nil, fmt.Errorf("no subnets found tagged %q=shared|owned and %q for cluster %q", clusterTag, roleTag, p.clusterName)
 	}
 
-	ids := make([]string, 0, len(out.Subnets))
-	for _, s := range out.Subnets {
+	ids := make([]string, 0, len(subnets))
+	for _, s := range subnets {
 		ids = append(ids, aws.ToString(s.SubnetId))
 	}
 	return ids, nil

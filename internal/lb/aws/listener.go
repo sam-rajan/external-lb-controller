@@ -12,11 +12,16 @@ import (
 )
 
 func (p *elbProvider) ensureListener(ctx context.Context, svc *corev1.Service, lbARN, tgARN string, port corev1.ServicePort) error {
-	listenersOut, err := p.elb.DescribeListeners(ctx, &elbv2.DescribeListenersInput{
+	var listeners []types.Listener
+	paginator := elbv2.NewDescribeListenersPaginator(p.elb, &elbv2.DescribeListenersInput{
 		LoadBalancerArn: aws.String(lbARN),
 	})
-	if err != nil {
-		return err
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return err
+		}
+		listeners = append(listeners, page.Listeners...)
 	}
 
 	protocol, certs := listenerProtocolAndCerts(svc, port.Port)
@@ -25,7 +30,7 @@ func (p *elbProvider) ensureListener(ctx context.Context, svc *corev1.Service, l
 		defaultCert = certs[:1]
 	}
 
-	for _, l := range listenersOut.Listeners {
+	for _, l := range listeners {
 		if aws.ToInt32(l.Port) == port.Port {
 			// Listener already exists; reconcile its protocol/cert and default action.
 			_, err := p.elb.ModifyListener(ctx, &elbv2.ModifyListenerInput{
