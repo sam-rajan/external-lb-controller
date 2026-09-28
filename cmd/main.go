@@ -72,7 +72,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	lbManager, err := lb.NewManager(context.Background(), lb.ProviderConfig{ClusterName: cfg.ClusterName, K8sClient: mgr.GetClient()})
+	lbManager, err := lb.NewManager(context.Background(), lb.ProviderConfig{
+		ClusterName:   cfg.ClusterName,
+		CloudProvider: cfg.CloudProvider,
+		K8sClient:     mgr.GetClient(),
+	})
 	if err != nil {
 		setupLog.Error(err, "Failed to detect load balancer provider")
 		os.Exit(1)

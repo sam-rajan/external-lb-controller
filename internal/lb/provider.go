@@ -23,6 +23,11 @@ type Provider interface {
 type ProviderConfig struct {
 	ClusterName string
 
+	// CloudProvider selects which registered provider to use: "auto" (or
+	// empty) probes every registered Detector in order, otherwise it must
+	// match a Detector's registered name exactly (e.g. "aws").
+	CloudProvider string
+
 	// K8sClient lets a Provider read cluster state (e.g. Node objects to
 	// resolve instance IDs for node/instance-mode target registration).
 	K8sClient client.Client

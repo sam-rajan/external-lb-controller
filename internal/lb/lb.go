@@ -13,15 +13,31 @@ type Manager struct {
 	provider Provider
 }
 
-// NewManager iterates all registered Detectors and returns a Manager backed by
-// the first Provider that reports itself as applicable for the current environment.
+// NewManager selects a Provider according to cfg.CloudProvider. "auto" (or
+// empty) probes every registered Detector in order and uses the first that
+// reports itself applicable; any other value must match a registered
+// Detector's name exactly, and that Detector's own probe still runs (it is
+// not used as a bypass).
 func NewManager(ctx context.Context, cfg ProviderConfig) (*Manager, error) {
-	for _, detect := range registry {
-		if p, ok := detect(ctx, cfg); ok {
+	if cfg.CloudProvider == "" || cfg.CloudProvider == "auto" {
+		for _, nd := range registry {
+			if p, ok := nd.detect(ctx, cfg); ok {
+				return &Manager{provider: p}, nil
+			}
+		}
+		return nil, fmt.Errorf("no load balancer provider detected for the current environment")
+	}
+
+	for _, nd := range registry {
+		if nd.name != cfg.CloudProvider {
+			continue
+		}
+		if p, ok := nd.detect(ctx, cfg); ok {
 			return &Manager{provider: p}, nil
 		}
+		return nil, fmt.Errorf("cloud provider %q was requested but its environment probe failed", cfg.CloudProvider)
 	}
-	return nil, fmt.Errorf("no load balancer provider detected for the current environment")
+	return nil, fmt.Errorf("cloud provider %q is not registered", cfg.CloudProvider)
 }
 
 func (m *Manager) EnsureLB(svc *corev1.Service, epSlices []discoveryv1.EndpointSlice) (string, error) {

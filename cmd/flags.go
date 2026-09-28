@@ -21,7 +21,8 @@ type Config struct {
 	ProbeAddr            string
 	EnableLeaderElection bool
 
-	ClusterName string
+	ClusterName   string
+	CloudProvider string
 
 	ZapOptions zap.Options
 }
@@ -52,6 +53,8 @@ func parseFlags() *Config {
 
 	flag.StringVar(&cfg.ClusterName, "cluster-name", "",
 		"Name of the Kubernetes cluster, used to auto-discover subnets tagged kubernetes.io/cluster/<cluster-name>=shared|owned when a Service doesn't specify aws-load-balancer-subnets.")
+	flag.StringVar(&cfg.CloudProvider, "cloud-provider", "auto",
+		"Cloud provider to use (e.g. \"aws\"), or \"auto\" to probe every registered provider and use the first one whose environment check succeeds.")
 
 	cfg.ZapOptions.BindFlags(flag.CommandLine)
 	flag.Parse()

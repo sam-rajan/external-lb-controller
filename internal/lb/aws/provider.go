@@ -6,6 +6,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/sam-rajan/out-tree-loadbalancer-controller/internal/lb"
@@ -33,14 +34,20 @@ const (
 )
 
 func init() {
-	lb.Register(detect)
+	lb.Register("aws", detect)
 }
 
-// detect tries to load AWS credentials. If successful the controller is
-// running in an AWS environment and the ELB provider is used.
+// detect verifies the controller has working AWS credentials by calling
+// sts:GetCallerIdentity, an action every principal can call regardless of its
+// permissions. Unlike config.LoadDefaultConfig alone (which resolves
+// credentials lazily and rarely errors up front), this actually confirms the
+// credentials are usable before the AWS provider is selected.
 func detect(ctx context.Context, providerCfg lb.ProviderConfig) (lb.Provider, bool) {
 	awsCfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
+		return nil, false
+	}
+	if _, err := sts.NewFromConfig(awsCfg).GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{}); err != nil {
 		return nil, false
 	}
 	return &elbProvider{
