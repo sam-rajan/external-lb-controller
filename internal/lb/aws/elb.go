@@ -17,23 +17,26 @@ import (
 func (p *elbProvider) EnsureLB(ctx context.Context, svc *corev1.Service, epSlices []discoveryv1.EndpointSlice) (string, error) {
 	ownerTag := ownerTagValue(svc)
 
-	var subnetIDs []string
+	subnetIDs, err := p.resolveSubnetIDs(ctx, svc)
+	if err != nil {
+		return "", fmt.Errorf("resolve subnets: %w", err)
+	}
 
 	elb, err := p.findLoadBalancer(ctx, ownerTag)
 	if err != nil {
 		return "", fmt.Errorf("find load balancer: %w", err)
 	}
 	if elb == nil {
-		if len(subnetIDs) == 0 {
-			subnetIDs, err = p.resolveSubnetIDs(ctx, svc)
-			if err != nil {
-				return "", fmt.Errorf("resolve subnets: %w", err)
-			}
-		}
 		elb, err = p.createLoadBalancer(ctx, svc, ownerTag, subnetIDs)
 		if err != nil {
 			return "", fmt.Errorf("create load balancer: %w", err)
 		}
+	} else if err := p.reconcileSubnets(ctx, elb, subnetIDs); err != nil {
+		return "", fmt.Errorf("reconcile subnets: %w", err)
+	}
+
+	if err := p.reconcileLoadBalancerAttributes(ctx, aws.ToString(elb.LoadBalancerArn), svc); err != nil {
+		return "", fmt.Errorf("reconcile load balancer attributes: %w", err)
 	}
 
 	targets, targetPort, err := p.resolveTargets(ctx, svc, epSlices)
@@ -47,16 +50,14 @@ func (p *elbProvider) EnsureLB(ctx context.Context, svc *corev1.Service, epSlice
 			return "", fmt.Errorf("find target group (port %d): %w", port.Port, err)
 		}
 		if tg == nil {
-			if len(subnetIDs) == 0 {
-				subnetIDs, err = p.resolveSubnetIDs(ctx, svc)
-				if err != nil {
-					return "", fmt.Errorf("resolve subnets: %w", err)
-				}
-			}
 			tg, err = p.createTargetGroup(ctx, svc, ownerTag, port, subnetIDs)
 			if err != nil {
 				return "", fmt.Errorf("create target group (port %d): %w", port.Port, err)
 			}
+		}
+
+		if err := p.reconcileTargetGroupHealthCheck(ctx, aws.ToString(tg.TargetGroupArn), svc); err != nil {
+			return "", fmt.Errorf("reconcile target group health check (port %d): %w", port.Port, err)
 		}
 
 		if err := p.syncTargets(ctx, *tg.TargetGroupArn, targets, targetPort(port)); err != nil {

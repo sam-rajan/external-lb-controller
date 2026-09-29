@@ -33,13 +33,10 @@ func securityGroupName(svc *corev1.Service) string {
 	return withSuffix(base, sgNameSuffix)
 }
 
-// tgName returns a name ≤32 chars for a target group.
+// tgName returns a name ≤32 chars for a target group, using the same
+// hash-based truncation as withSuffix so long, similar names don't collide.
 func tgName(svc *corev1.Service, port int32) string {
-	name := fmt.Sprintf("%s-%s-%d", svc.Namespace, svc.Name, port)
-	if len(name) > 32 {
-		name = name[:32]
-	}
-	return name
+	return withSuffix(fmt.Sprintf("%s-%s-%d", svc.Namespace, svc.Name, port), "")
 }
 
 // withSuffix appends suffix to name (if not already present) while staying

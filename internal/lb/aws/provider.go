@@ -22,6 +22,17 @@ const (
 	annotationSSLCert        = "service.beta.kubernetes.io/aws-load-balancer-ssl-cert"    // comma-separated ACM cert ARNs; first is the default cert
 	annotationSSLPorts       = "service.beta.kubernetes.io/aws-load-balancer-ssl-ports"   // comma-separated ports, or "*"/absent for all ports (only meaningful if ssl-cert is set)
 	annotationTargetType     = "service.beta.kubernetes.io/aws-load-balancer-target-type" // "instance" (default) or "ip"
+	annotationLBAttributes   = "service.beta.kubernetes.io/aws-load-balancer-attributes"  // comma-separated key=value ELBv2 load balancer attributes, e.g. "load_balancing.cross_zone.enabled=true,deletion_protection.enabled=true"
+
+	// Target group health check annotations; each is optional and left as the
+	// ELBv2 default when unset.
+	annotationHealthCheckProtocol        = "service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol"
+	annotationHealthCheckPort            = "service.beta.kubernetes.io/aws-load-balancer-healthcheck-port"
+	annotationHealthCheckPath            = "service.beta.kubernetes.io/aws-load-balancer-healthcheck-path"
+	annotationHealthCheckIntervalSeconds = "service.beta.kubernetes.io/aws-load-balancer-healthcheck-interval-seconds"
+	annotationHealthCheckTimeoutSeconds  = "service.beta.kubernetes.io/aws-load-balancer-healthcheck-timeout-seconds"
+	annotationHealthyThresholdCount      = "service.beta.kubernetes.io/aws-load-balancer-healthy-threshold-count"
+	annotationUnhealthyThresholdCount    = "service.beta.kubernetes.io/aws-load-balancer-unhealthy-threshold-count"
 
 	targetTypeInstance = "instance"
 	targetTypeIP       = "ip"
