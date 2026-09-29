@@ -40,10 +40,10 @@ func NewManager(ctx context.Context, cfg ProviderConfig) (*Manager, error) {
 	return nil, fmt.Errorf("cloud provider %q is not registered", cfg.CloudProvider)
 }
 
-func (m *Manager) EnsureLB(svc *corev1.Service, epSlices []discoveryv1.EndpointSlice) (string, error) {
-	return m.provider.EnsureLB(context.Background(), svc, epSlices)
+func (m *Manager) EnsureLB(ctx context.Context, svc *corev1.Service, epSlices []discoveryv1.EndpointSlice) (string, error) {
+	return m.provider.EnsureLB(ctx, svc, epSlices)
 }
 
-func (m *Manager) DeleteLB(svc *corev1.Service) error {
-	return m.provider.DeleteLB(context.Background(), svc)
+func (m *Manager) DeleteLB(ctx context.Context, svc *corev1.Service) error {
+	return m.provider.DeleteLB(ctx, svc)
 }

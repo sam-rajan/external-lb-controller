@@ -27,6 +27,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -76,9 +77,9 @@ func (r *ServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 func (r *ServiceReconciler) reconcileUpsert(ctx context.Context, svc *corev1.Service) (ctrl.Result, error) {
 	// Add finalizer so we can get the responsibility of the deletion.
-	if !slices.Contains(svc.Finalizers, lbFinalizer) {
-		svc.Finalizers = append(svc.Finalizers, lbFinalizer)
-		if err := r.Update(ctx, svc); err != nil {
+	patch := client.MergeFrom(svc.DeepCopy())
+	if controllerutil.AddFinalizer(svc, lbFinalizer) {
+		if err := r.Patch(ctx, svc, patch); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
@@ -89,7 +90,7 @@ func (r *ServiceReconciler) reconcileUpsert(ctx context.Context, svc *corev1.Ser
 		return ctrl.Result{}, err
 	}
 
-	hostname, err := r.LBManager.EnsureLB(svc, epSlices)
+	hostname, err := r.LBManager.EnsureLB(ctx, svc, epSlices)
 	if err != nil {
 		logf.FromContext(ctx).Error(err, "Failed to ensure load balancer")
 		return ctrl.Result{}, err
@@ -120,13 +121,14 @@ func (r *ServiceReconciler) reconcileDelete(ctx context.Context, svc *corev1.Ser
 	}
 
 	logf.FromContext(ctx).Info("Deleting load balancer for service", "service", types.NamespacedName{Name: svc.Name, Namespace: svc.Namespace})
-	if err := r.LBManager.DeleteLB(svc); err != nil {
+	if err := r.LBManager.DeleteLB(ctx, svc); err != nil {
 		logf.FromContext(ctx).Error(err, "Failed to delete load balancer")
 		return ctrl.Result{}, err
 	}
 
-	svc.Finalizers = slices.DeleteFunc(svc.Finalizers, func(f string) bool { return f == lbFinalizer })
-	return ctrl.Result{}, r.Update(ctx, svc)
+	patch := client.MergeFrom(svc.DeepCopy())
+	controllerutil.RemoveFinalizer(svc, lbFinalizer)
+	return ctrl.Result{}, r.Patch(ctx, svc, patch)
 }
 
 func (r *ServiceReconciler) setIngressStatus(ctx context.Context, svc *corev1.Service, hostname string) (ctrl.Result, error) {
