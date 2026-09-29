@@ -86,6 +86,7 @@ func main() {
 		Client:    mgr.GetClient(),
 		Scheme:    mgr.GetScheme(),
 		LBManager: lbManager,
+		Recorder:  mgr.GetEventRecorderFor("otlbc-controller"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "service")
 		os.Exit(1)

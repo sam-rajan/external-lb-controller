@@ -34,12 +34,22 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	"k8s.io/client-go/tools/record"
+
 	"github.com/sam-rajan/out-tree-loadbalancer-controller/internal/lb"
 )
 
 const (
 	lbClass     = "otlbc.io/lb"
 	lbFinalizer = "otlbc.io/lb-cleanup"
+
+	// annotationSkipLBCleanup is an operator-set escape hatch: when "true",
+	// reconcileDelete skips DeleteLB and removes the finalizer unconditionally.
+	// This is for cases where LB deletion can never succeed (e.g. revoked
+	// cloud credentials, the cluster no longer running on the provider that
+	// created the resource) and an operator has decided to accept the risk of
+	// an orphaned cloud load balancer in order to unblock Service deletion.
+	annotationSkipLBCleanup = "otlbc.io/skip-lb-cleanup"
 )
 
 // ServiceReconciler reconciles a Service object
@@ -47,6 +57,7 @@ type ServiceReconciler struct {
 	client.Client
 	Scheme    *runtime.Scheme
 	LBManager *lb.Manager
+	Recorder  record.EventRecorder
 }
 
 // +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
@@ -54,6 +65,7 @@ type ServiceReconciler struct {
 // +kubebuilder:rbac:groups=core,resources=services/finalizers,verbs=update
 
 // +kubebuilder:rbac:groups=core,resources=endpoints,verbs=get;list;watch
+// +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
 
 func (r *ServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 
@@ -120,10 +132,15 @@ func (r *ServiceReconciler) reconcileDelete(ctx context.Context, svc *corev1.Ser
 		return ctrl.Result{}, nil
 	}
 
-	logf.FromContext(ctx).Info("Deleting load balancer for service", "service", types.NamespacedName{Name: svc.Name, Namespace: svc.Namespace})
-	if err := r.LBManager.DeleteLB(ctx, svc); err != nil {
-		logf.FromContext(ctx).Error(err, "Failed to delete load balancer")
-		return ctrl.Result{}, err
+	if svc.Annotations[annotationSkipLBCleanup] == "true" {
+		logf.FromContext(ctx).Info("Skipping load balancer cleanup, annotation requests it; the cloud load balancer may be orphaned", "service", types.NamespacedName{Name: svc.Name, Namespace: svc.Namespace}, "annotation", annotationSkipLBCleanup)
+		r.Recorder.Eventf(svc, corev1.EventTypeWarning, "LoadBalancerCleanupSkipped", "Skipped load balancer deletion because %s=true; the cloud load balancer may be orphaned", annotationSkipLBCleanup)
+	} else {
+		logf.FromContext(ctx).Info("Deleting load balancer for service", "service", types.NamespacedName{Name: svc.Name, Namespace: svc.Namespace})
+		if err := r.LBManager.DeleteLB(ctx, svc); err != nil {
+			logf.FromContext(ctx).Error(err, "Failed to delete load balancer")
+			return ctrl.Result{}, err
+		}
 	}
 
 	patch := client.MergeFrom(svc.DeepCopy())
