@@ -16,7 +16,39 @@ func validate(svc *corev1.Service) (admission.Warnings, error) {
 	if !ownedByUs(svc) {
 		return nil, nil
 	}
+	if errs := validationErrors(svc); len(errs) > 0 {
+		return nil, fmt.Errorf("invalid Service %s/%s: %s", svc.Namespace, svc.Name, strings.Join(errs, "; "))
+	}
+	return nil, nil
+}
 
+// validateUpdate additionally enforces immutability: once a Service is owned
+// by us, its loadBalancerClass can't be changed away (doing so would make the
+// controller's ownedByUs check skip the Service on every future reconcile,
+// orphaning its finalizer and any already-provisioned cloud resources), and
+// provider-specific fields that can't be modified in place (see
+// lb.ValidateAnnotationsUpdate) are likewise rejected.
+func validateUpdate(oldSvc, newSvc *corev1.Service) (admission.Warnings, error) {
+	var errs []string
+
+	if ownedByUs(oldSvc) && !sameLBClass(oldSvc, newSvc) {
+		errs = append(errs, fmt.Sprintf("spec.loadBalancerClass is immutable once set to %q", lbClass))
+	}
+
+	if ownedByUs(newSvc) {
+		errs = append(errs, validationErrors(newSvc)...)
+		if ownedByUs(oldSvc) {
+			errs = append(errs, lb.ValidateAnnotationsUpdate(oldSvc, newSvc)...)
+		}
+	}
+
+	if len(errs) > 0 {
+		return nil, fmt.Errorf("invalid Service %s/%s: %s", newSvc.Namespace, newSvc.Name, strings.Join(errs, "; "))
+	}
+	return nil, nil
+}
+
+func validationErrors(svc *corev1.Service) []string {
 	var errs []string
 
 	if svc.Spec.Type != corev1.ServiceTypeLoadBalancer {
@@ -34,11 +66,18 @@ func validate(svc *corev1.Service) (admission.Warnings, error) {
 	}
 
 	errs = append(errs, lb.ValidateAnnotations(svc)...)
+	return errs
+}
 
-	if len(errs) > 0 {
-		return nil, fmt.Errorf("invalid Service %s/%s: %s", svc.Namespace, svc.Name, strings.Join(errs, "; "))
+func sameLBClass(oldSvc, newSvc *corev1.Service) bool {
+	var oldClass, newClass string
+	if oldSvc.Spec.LoadBalancerClass != nil {
+		oldClass = *oldSvc.Spec.LoadBalancerClass
 	}
-	return nil, nil
+	if newSvc.Spec.LoadBalancerClass != nil {
+		newClass = *newSvc.Spec.LoadBalancerClass
+	}
+	return oldClass == newClass
 }
 
 func ownedByUs(svc *corev1.Service) bool {

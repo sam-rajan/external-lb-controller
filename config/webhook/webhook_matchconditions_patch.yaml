@@ -1,0 +1,11 @@
+# controller-gen (as of v0.20.1) has no marker for matchConditions, so this
+# patch layers it onto the generated ValidatingWebhookConfiguration rather
+# than hand-editing manifests.yaml (auto-generated, see AGENTS.md). It scopes
+# the webhook to only Services using our loadBalancerClass, so failurePolicy:
+# Fail can't block unrelated Service writes cluster-wide if the webhook pod is
+# ever unavailable.
+- op: add
+  path: /webhooks/0/matchConditions
+  value:
+  - name: only-otlbc-lb-class
+    expression: "object.spec.loadBalancerClass == 'otlbc.io/lb'"

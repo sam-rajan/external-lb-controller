@@ -21,3 +21,23 @@ func ValidateAnnotations(svc *corev1.Service) []string {
 	}
 	return errs
 }
+
+// UpdateValidator checks a Service update (old vs new) for a Provider
+// implementation's annotations and returns a validation error message per
+// problem found, e.g. rejecting a change to a value the Provider can't
+// actually update on the underlying cloud resource.
+type UpdateValidator func(oldSvc, newSvc *corev1.Service) []string
+
+var updateValidators []UpdateValidator
+
+func RegisterUpdateValidator(v UpdateValidator) {
+	updateValidators = append(updateValidators, v)
+}
+
+func ValidateAnnotationsUpdate(oldSvc, newSvc *corev1.Service) []string {
+	var errs []string
+	for _, v := range updateValidators {
+		errs = append(errs, v(oldSvc, newSvc)...)
+	}
+	return errs
+}

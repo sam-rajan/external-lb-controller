@@ -60,7 +60,7 @@ type ServiceReconciler struct {
 	Recorder  record.EventRecorder
 }
 
-// +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=core,resources=services/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=core,resources=services/finalizers,verbs=update
 

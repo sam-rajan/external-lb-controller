@@ -1,3 +1,9 @@
 resources:
 - manifests.yaml
 - service.yaml
+
+patches:
+- path: webhook_matchconditions_patch.yaml
+  target:
+    kind: ValidatingWebhookConfiguration
+    name: validating-webhook-configuration

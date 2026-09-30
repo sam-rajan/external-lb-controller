@@ -11,6 +11,25 @@ import (
 
 func init() {
 	lb.RegisterValidator(validateAnnotations)
+	lb.RegisterUpdateValidator(validateAnnotationImmutability)
+}
+
+// immutableAnnotations can't be changed once set: AWS doesn't support
+// modifying scheme, load balancer name, or target type on an existing
+// load balancer/target group in place (see docs/design.md's create-only
+// limitation), so an edit would otherwise silently do nothing.
+var immutableAnnotations = []string{annotationScheme, annotationLBName, annotationTargetType}
+
+func validateAnnotationImmutability(oldSvc, newSvc *corev1.Service) []string {
+	var errs []string
+	for _, key := range immutableAnnotations {
+		oldVal, newVal := oldSvc.Annotations[key], newSvc.Annotations[key]
+		if oldVal != newVal {
+			errs = append(errs, fmt.Sprintf("annotation %q is immutable once set (the underlying AWS resource can't be modified in place): cannot change from %q to %q",
+				key, oldVal, newVal))
+		}
+	}
+	return errs
 }
 
 // lbNamePattern matches AWS's ELBv2 load balancer naming rules: up to 32

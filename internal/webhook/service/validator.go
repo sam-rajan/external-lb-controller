@@ -25,8 +25,8 @@ func (v *ServiceValidator) ValidateCreate(_ context.Context, svc *corev1.Service
 	return validate(svc)
 }
 
-func (v *ServiceValidator) ValidateUpdate(_ context.Context, _, newSvc *corev1.Service) (admission.Warnings, error) {
-	return validate(newSvc)
+func (v *ServiceValidator) ValidateUpdate(_ context.Context, oldSvc, newSvc *corev1.Service) (admission.Warnings, error) {
+	return validateUpdate(oldSvc, newSvc)
 }
 
 func (v *ServiceValidator) ValidateDelete(_ context.Context, _ *corev1.Service) (admission.Warnings, error) {
