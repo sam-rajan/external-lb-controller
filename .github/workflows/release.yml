@@ -1,0 +1,51 @@
+name: Release
+
+# Publishes the controller image to GHCR and attaches a versioned install
+# bundle (dist/install.yaml) to a GitHub Release when a v* tag is pushed.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions: {}
+
+jobs:
+  release:
+    permissions:
+      contents: write
+      packages: write
+    name: Build and publish
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: go.mod
+
+      - name: Run unit tests
+        run: make test
+
+      - name: Log in to GHCR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: echo "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build and push image
+        run: make docker-build docker-push IMG="${IMAGE,,}:${TAG}"
+
+      - name: Build install bundle
+        run: make build-installer IMG="${IMAGE,,}:${TAG}"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$TAG" dist/install.yaml --repo "$GITHUB_REPOSITORY" --title "$TAG" --generate-notes

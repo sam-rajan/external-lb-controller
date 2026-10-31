@@ -1,14 +1,14 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: my-different-service
+  name: my-explicit-subnets-service
   labels:
     app: web-app
   annotations:
     service.beta.kubernetes.io/aws-load-balancer-subnets: subnet-0123456789abcdef0,subnet-0fedcba9876543210
 spec:
   type: LoadBalancer
-  loadBalancerClass: amazonaws.com/fakelb
+  loadBalancerClass: otlbc.io/lb
   selector:
     run: nginx
   ports:
