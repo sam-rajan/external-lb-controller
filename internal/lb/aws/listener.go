@@ -3,6 +3,7 @@ package aws
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -94,12 +95,7 @@ func sslEnabledForPort(svc *corev1.Service, port int32) bool {
 	if v == "" || v == "*" {
 		return true
 	}
-	for _, p := range splitCSV(v) {
-		if p == strconv.Itoa(int(port)) {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(splitCSV(v), strconv.Itoa(int(port)))
 }
 
 // reconcileListenerCertificates ensures the listener's additional (SNI)

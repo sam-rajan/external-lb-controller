@@ -76,7 +76,7 @@ func (r *ServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	// Ensure that the service has the lbClassname and hence owned by us
 	if !r.ownedByUs(svc) {
-		logf.FromContext(ctx).V(1).Info("Service is not owned by otlbc", svc.Name)
+		logf.FromContext(ctx).V(1).Info("Service is not owned by otlbc", "name", svc.Name)
 		return ctrl.Result{}, nil
 	}
 

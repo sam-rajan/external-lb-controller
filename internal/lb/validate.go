@@ -15,7 +15,7 @@ func RegisterValidator(v AnnotationValidator) {
 }
 
 func ValidateAnnotations(svc *corev1.Service) []string {
-	var errs []string
+	errs := make([]string, 0, len(validators))
 	for _, v := range validators {
 		errs = append(errs, v(svc)...)
 	}
@@ -35,7 +35,7 @@ func RegisterUpdateValidator(v UpdateValidator) {
 }
 
 func ValidateAnnotationsUpdate(oldSvc, newSvc *corev1.Service) []string {
-	var errs []string
+	errs := make([]string, 0, len(updateValidators))
 	for _, v := range updateValidators {
 		errs = append(errs, v(oldSvc, newSvc)...)
 	}
