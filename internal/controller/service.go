@@ -34,7 +34,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 
 	"github.com/sam-rajan/out-tree-loadbalancer-controller/internal/lb"
 )
@@ -57,7 +57,7 @@ type ServiceReconciler struct {
 	client.Client
 	Scheme    *runtime.Scheme
 	LBManager *lb.Manager
-	Recorder  record.EventRecorder
+	Recorder  events.EventRecorder
 }
 
 // +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;update;patch
@@ -66,6 +66,7 @@ type ServiceReconciler struct {
 
 // +kubebuilder:rbac:groups=core,resources=endpoints,verbs=get;list;watch
 // +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 
 func (r *ServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 
@@ -134,7 +135,7 @@ func (r *ServiceReconciler) reconcileDelete(ctx context.Context, svc *corev1.Ser
 
 	if svc.Annotations[annotationSkipLBCleanup] == "true" {
 		logf.FromContext(ctx).Info("Skipping load balancer cleanup, annotation requests it; the cloud load balancer may be orphaned", "service", types.NamespacedName{Name: svc.Name, Namespace: svc.Namespace}, "annotation", annotationSkipLBCleanup)
-		r.Recorder.Eventf(svc, corev1.EventTypeWarning, "LoadBalancerCleanupSkipped", "Skipped load balancer deletion because %s=true; the cloud load balancer may be orphaned", annotationSkipLBCleanup)
+		r.Recorder.Eventf(svc, nil, corev1.EventTypeWarning, "LoadBalancerCleanupSkipped", "Delete", "Skipped load balancer deletion because %s=true; the cloud load balancer may be orphaned", annotationSkipLBCleanup)
 	} else {
 		logf.FromContext(ctx).Info("Deleting load balancer for service", "service", types.NamespacedName{Name: svc.Name, Namespace: svc.Namespace})
 		if err := r.LBManager.DeleteLB(ctx, svc); err != nil {

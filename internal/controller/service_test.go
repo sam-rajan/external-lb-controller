@@ -29,7 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -66,7 +66,7 @@ var fakeProviderCounter int
 
 // newReconciler wires a ServiceReconciler to a fake client holding objs and
 // to fp, registered through the public lb registry.
-func newReconciler(t *testing.T, fp *fakeProvider, objs ...client.Object) (*ServiceReconciler, client.Client, *record.FakeRecorder) {
+func newReconciler(t *testing.T, fp *fakeProvider, objs ...client.Object) (*ServiceReconciler, client.Client, *events.FakeRecorder) {
 	t.Helper()
 
 	c := fake.NewClientBuilder().
@@ -83,7 +83,7 @@ func newReconciler(t *testing.T, fp *fakeProvider, objs ...client.Object) (*Serv
 		t.Fatal(err)
 	}
 
-	rec := record.NewFakeRecorder(10)
+	rec := events.NewFakeRecorder(10)
 	return &ServiceReconciler{Client: c, Scheme: runtime.NewScheme(), LBManager: mgr, Recorder: rec}, c, rec
 }
 
