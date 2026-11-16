@@ -1,5 +1,5 @@
 /*
-Copyright 2026 The out-tree-loadbalancer-controller Authors.
+Copyright 2026 The external-lb-controller Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -34,7 +34,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	"github.com/sam-rajan/out-tree-loadbalancer-controller/internal/lb"
+	"github.com/sam-rajan/external-lb-controller/internal/lb"
 )
 
 // These tests use a fake API server client and a fake lb.Provider, so unlike

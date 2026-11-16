@@ -9,7 +9,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	// Registers the AWS annotation validators with internal/lb.
-	_ "github.com/sam-rajan/out-tree-loadbalancer-controller/internal/lb/aws"
+	_ "github.com/sam-rajan/external-lb-controller/internal/lb/aws"
 )
 
 const (

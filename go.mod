@@ -1,4 +1,4 @@
-module github.com/sam-rajan/out-tree-loadbalancer-controller
+module github.com/sam-rajan/external-lb-controller
 
 go 1.26
 

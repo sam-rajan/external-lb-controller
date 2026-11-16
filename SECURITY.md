@@ -12,7 +12,7 @@ recent tagged release (once one exists) receive fixes.
 ## Reporting a vulnerability
 
 **Do not open a public issue.** Report privately using GitHub's
-[private vulnerability reporting](https://github.com/sam-rajan/out-tree-loadbalancer-controller/security/advisories/new).
+[private vulnerability reporting](https://github.com/sam-rajan/external-lb-controller/security/advisories/new).
 
 Please include the affected version or commit, reproduction steps, and the
 impact you see. Expect an acknowledgement within a few days. This is a
@@ -23,7 +23,7 @@ prioritized over other work.
 
 - Anything that lets a user without cloud permissions cause the controller to
   create, modify or delete cloud resources it does not own (the controller
-  identifies its resources by the `otlbc.io/service` tag).
+  identifies its resources by the `external-lb.io/service` tag).
 - Bypasses of the admission webhook, or of the immutability rules on
   `loadBalancerClass` and the `scheme`, `name` and `target-type` annotations.
 - Overly broad default RBAC or IAM permissions.
@@ -33,7 +33,7 @@ prioritized over other work.
 
 - Grant the controller the narrowest IAM policy that works; see the README.
   Prefer IRSA / workload identity over node instance profiles.
-- Anyone who can create a Service with `loadBalancerClass: otlbc.io/lb` can
+- Anyone who can create a Service with `loadBalancerClass: external-lb.io/lb` can
   make the controller create cloud resources. Restrict that with
   admission policy or RBAC if your cluster has untrusted tenants.
 - Annotations such as `security-groups` and `subnets` let a Service author

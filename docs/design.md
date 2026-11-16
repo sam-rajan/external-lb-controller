@@ -8,17 +8,17 @@ live in code and in `docs/` topic pages.
 
 | Attribute | Value |
 |---|---|
-| Project name | `out-tree-loadbalancer-controller` |
-| Go module | `github.com/sam-rajan/out-tree-loadbalancer-controller` |
-| Repository | https://github.com/sam-rajan/out-tree-loadbalancer-controller |
-| Kubebuilder domain | `otlbc.io` |
-| `loadBalancerClass` | `otlbc.io/lb` |
-| Finalizer | `otlbc.io/lb-cleanup` |
-| Cloud resource tag | `otlbc.io/service` |
+| Project name | `external-lb-controller` |
+| Go module | `github.com/sam-rajan/external-lb-controller` |
+| Repository | https://github.com/sam-rajan/external-lb-controller |
+| Kubebuilder domain | `external-lb.io` |
+| `loadBalancerClass` | `external-lb.io/lb` |
+| Finalizer | `external-lb.io/lb-cleanup` |
+| Cloud resource tag | `external-lb.io/service` |
 | License | Apache-2.0 (`LICENSE`, `NOTICE`) |
 | Minimum Go | 1.26 |
 
-The `otlbc.io` domain is used only as an opaque API identifier (class string,
+The `external-lb.io` domain is used only as an opaque API identifier (class string,
 annotation prefixes, finalizer, tags). It is not required to resolve. The
 `loadBalancerClass` string is a **hard API contract**: once users adopt it, it
 cannot change without a migration path.
@@ -51,7 +51,7 @@ Consequences:
 The in-tree/`cloud-provider-aws` service controller reconciles **every**
 `type: LoadBalancer` Service in the cluster and is coupled to the cluster's
 cloud provider. This project reconciles **only** Services that explicitly opt
-in with `loadBalancerClass: otlbc.io/lb`, so it can run alongside an existing
+in with `loadBalancerClass: external-lb.io/lb`, so it can run alongside an existing
 cloud provider during migration, or in clusters with no cloud provider at all
 (e.g. self-managed nodes on EC2).
 
@@ -67,7 +67,7 @@ milestones are reached.
 ## Architecture (current)
 
 ```
-Service (type=LoadBalancer, loadBalancerClass=otlbc.io/lb)
+Service (type=LoadBalancer, loadBalancerClass=external-lb.io/lb)
   │
   ▼
 internal/controller (ServiceReconciler)
@@ -97,6 +97,6 @@ verified credentials). Tracked in the roadmap as a Phase 1 correctness item.
 ## Open decisions (revisit before v0.1.0)
 
 - Whether to keep the AWS annotation keys under the `aws-load-balancer-*`
-  namespace long-term or move to `otlbc.io/*` for all providers.
+  namespace long-term or move to `external-lb.io/*` for all providers.
 - Single LB per Service (current) vs. optional LB sharing/consolidation.
 - Versioning policy for the `loadBalancerClass` string.

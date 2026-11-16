@@ -9,7 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/sam-rajan/out-tree-loadbalancer-controller/internal/lb"
+	"github.com/sam-rajan/external-lb-controller/internal/lb"
 )
 
 const (
@@ -41,7 +41,7 @@ const (
 	schemeInternal       = "internal"
 
 	// Tag applied to every AWS resource managed by this controller.
-	tagOwnerKey = "otlbc.io/service"
+	tagOwnerKey = "external-lb.io/service"
 )
 
 func init() {

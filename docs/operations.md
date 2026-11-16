@@ -9,20 +9,20 @@ the [README](../README.md).
 A Service is managed only if **both** hold:
 
 - `spec.type` is `LoadBalancer`, and
-- `spec.loadBalancerClass` is exactly `otlbc.io/lb`.
+- `spec.loadBalancerClass` is exactly `external-lb.io/lb`.
 
 Everything else is ignored, including `type: LoadBalancer` Services without
 the class. The admission webhook makes `loadBalancerClass` immutable once set,
 so a Service cannot be moved out from under its finalizer.
 
-Managed Services carry the finalizer `otlbc.io/lb-cleanup`. It is added
+Managed Services carry the finalizer `external-lb.io/lb-cleanup`. It is added
 **before** any cloud resource is created, so a Service can't be deleted while
 cloud resources may exist that the controller hasn't cleaned up.
 
 ## Tagging model (AWS)
 
 The controller finds its resources by tag, not by stored IDs, so it can
-recover after restarts. The tag key is `otlbc.io/service`.
+recover after restarts. The tag key is `external-lb.io/service`.
 
 | AWS resource | Tag value | Notes |
 |---|---|---|
@@ -37,7 +37,7 @@ so similar long names don't collide.
 
 Consequences:
 
-- **Don't remove or edit the `otlbc.io/service` tag** on these resources. The
+- **Don't remove or edit the `external-lb.io/service` tag** on these resources. The
   controller would no longer find them: it would create duplicates on the next
   reconcile and could not delete the originals.
 - **Renaming or recreating a Service** with a different namespace/name gives a
@@ -65,14 +65,14 @@ common causes are missing IAM permissions, a deletion-protected load balancer
 (`deletion_protection.enabled=true` in the `attributes` annotation), or a
 security group still referenced by another resource.
 
-### Escape hatch: `otlbc.io/skip-lb-cleanup`
+### Escape hatch: `external-lb.io/skip-lb-cleanup`
 
 If cleanup can never succeed (credentials revoked, AWS account closed, the
 cluster no longer runs where the resources were created), a Service can be
 stuck in `Terminating` forever. An operator can unblock it:
 
 ```sh
-kubectl annotate service <name> -n <namespace> otlbc.io/skip-lb-cleanup=true
+kubectl annotate service <name> -n <namespace> external-lb.io/skip-lb-cleanup=true
 ```
 
 The controller then **skips all cloud deletion**, emits a
@@ -80,7 +80,7 @@ The controller then **skips all cloud deletion**, emits a
 
 **This can orphan the load balancer, target groups and security group, and you
 keep paying for them.** Before using it, try to fix the underlying error. Afterwards,
-find the leftovers by the `otlbc.io/service` tag and delete them manually.
+find the leftovers by the `external-lb.io/service` tag and delete them manually.
 
 Do not set it casually; it is meant for operators, not for routine Service
 authors. Restrict who can annotate Services if that matters in your cluster.
@@ -93,4 +93,4 @@ authors. Restrict who can annotate Services if that matters in your cluster.
 | Admission error on create/update | The message names the failing field: non-TCP port, bad annotation value, or an immutable annotation change |
 | Service stuck in `Terminating` | Controller logs for the AWS error; see the deletion section above |
 | Controller exits at startup | `--cloud-provider=aws` requires working AWS credentials (`sts:GetCallerIdentity` must succeed); with `auto` it needs at least one provider to pass |
-| Nothing happens for a Service | Confirm `type: LoadBalancer` and the exact class `otlbc.io/lb` |
+| Nothing happens for a Service | Confirm `type: LoadBalancer` and the exact class `external-lb.io/lb` |

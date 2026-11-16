@@ -7,7 +7,7 @@ first, and report security issues privately as described in
 ## Before you start
 
 Read [docs/design.md](docs/design.md): it records scope (multi-cloud, AWS
-first), the `otlbc.io/lb` class contract and open decisions. For anything
+first), the `external-lb.io/lb` class contract and open decisions. For anything
 larger than a small fix, open an issue first so we can agree on the approach.
 
 ## Development setup
@@ -65,7 +65,7 @@ code stays under `internal/lb/<provider>/`.
 
 Maintainers release by pushing a `v*` tag. The
 [release workflow](.github/workflows/release.yml) runs the tests, publishes
-`ghcr.io/sam-rajan/out-tree-loadbalancer-controller:<tag>` and attaches
+`ghcr.io/sam-rajan/external-lb-controller:<tag>` and attaches
 `install.yaml` to a GitHub Release. Move the "Unreleased" changelog entries
 under the new version first.
 

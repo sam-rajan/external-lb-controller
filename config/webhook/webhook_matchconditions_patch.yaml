@@ -7,5 +7,5 @@
 - op: add
   path: /webhooks/0/matchConditions
   value:
-  - name: only-otlbc-lb-class
-    expression: "object.spec.loadBalancerClass == 'otlbc.io/lb'"
+  - name: only-external-lb-class
+    expression: "object.spec.loadBalancerClass == 'external-lb.io/lb'"

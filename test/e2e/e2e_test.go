@@ -2,7 +2,7 @@
 // +build e2e
 
 /*
-Copyright 2026 The out-tree-loadbalancer-controller Authors.
+Copyright 2026 The external-lb-controller Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,20 +30,20 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/sam-rajan/out-tree-loadbalancer-controller/test/utils"
+	"github.com/sam-rajan/external-lb-controller/test/utils"
 )
 
 // namespace where the project is deployed in
-const namespace = "out-tree-lb-controller-system"
+const namespace = "external-lb-controller-system"
 
 // serviceAccountName created for the project
-const serviceAccountName = "out-tree-lb-controller-controller-manager"
+const serviceAccountName = "external-lb-controller-controller-manager"
 
 // metricsServiceName is the name of the metrics service of the project
-const metricsServiceName = "out-tree-lb-controller-controller-manager-metrics-service"
+const metricsServiceName = "external-lb-controller-controller-manager-metrics-service"
 
 // metricsRoleBindingName is the name of the RBAC that will be created to allow get the metrics data
-const metricsRoleBindingName = "out-tree-lb-controller-metrics-binding"
+const metricsRoleBindingName = "external-lb-controller-metrics-binding"
 
 var _ = Describe("Manager", Ordered, func() {
 	var controllerPodName string
@@ -176,7 +176,7 @@ var _ = Describe("Manager", Ordered, func() {
 		It("should ensure the metrics endpoint is serving metrics", func() {
 			By("creating a ClusterRoleBinding for the service account to allow access to metrics")
 			cmd := exec.Command("kubectl", "create", "clusterrolebinding", metricsRoleBindingName,
-				"--clusterrole=out-tree-lb-controller-metrics-reader",
+				"--clusterrole=external-lb-controller-metrics-reader",
 				fmt.Sprintf("--serviceaccount=%s:%s", namespace, serviceAccountName),
 			)
 			_, err := utils.Run(cmd)

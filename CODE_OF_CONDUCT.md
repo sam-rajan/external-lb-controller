@@ -34,7 +34,7 @@ contributions that violate this code, and may temporarily or permanently ban
 contributors for behavior they deem inappropriate.
 
 To report a problem, use GitHub's
-[private reporting form](https://github.com/sam-rajan/out-tree-loadbalancer-controller/security/advisories/new)
+[private reporting form](https://github.com/sam-rajan/external-lb-controller/security/advisories/new)
 and mark the report as a conduct issue, or contact a maintainer through their
 GitHub profile. Reports are handled confidentially.
 

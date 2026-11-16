@@ -1,8 +1,8 @@
-# out-tree-lb-controller
+# external-lb-controller
 
 An out-of-tree Kubernetes controller that provisions cloud load balancers for
 `Service` objects of `type: LoadBalancer` that opt in with
-`loadBalancerClass: otlbc.io/lb`.
+`loadBalancerClass: external-lb.io/lb`.
 
 AWS (ELBv2: NLB and ALB) is the first supported provider. GCP and Azure are on
 the roadmap.
@@ -15,17 +15,17 @@ the roadmap.
 ## Description
 
 The controller reconciles **only** Services that set
-`spec.loadBalancerClass: otlbc.io/lb`. It does not touch other
+`spec.loadBalancerClass: external-lb.io/lb`. It does not touch other
 `type: LoadBalancer` Services, so it can run next to the in-tree cloud provider
 or `cloud-provider-aws`, or in clusters with no cloud provider at all (for
 example self-managed nodes on EC2).
 
 For each opted-in Service the controller:
 
-1. Adds the finalizer `otlbc.io/lb-cleanup`.
+1. Adds the finalizer `external-lb.io/lb-cleanup`.
 2. Creates a load balancer, target groups, listeners and (unless you supply
    your own) a security group on AWS. Every resource is tagged
-   `otlbc.io/service`.
+   `external-lb.io/service`.
 3. Registers targets: cluster nodes on the Service's NodePort
    (`target-type: instance`, the default) or ready endpoint IPs
    (`target-type: ip`).
@@ -47,7 +47,7 @@ metadata:
     service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
 spec:
   type: LoadBalancer
-  loadBalancerClass: otlbc.io/lb
+  loadBalancerClass: external-lb.io/lb
   selector:
     app: web
   ports:
@@ -90,12 +90,12 @@ Controller-level annotation:
 
 | Annotation | Purpose |
 |---|---|
-| `otlbc.io/skip-lb-cleanup: "true"` | Escape hatch (see [docs/operations.md](docs/operations.md)). On deletion, skip deleting the cloud load balancer and just remove the finalizer. Use only when cleanup can never succeed (revoked credentials, cluster moved off the provider). **This can orphan cloud resources.** |
+| `external-lb.io/skip-lb-cleanup: "true"` | Escape hatch (see [docs/operations.md](docs/operations.md)). On deletion, skip deleting the cloud load balancer and just remove the finalizer. Use only when cleanup can never succeed (revoked credentials, cluster moved off the provider). **This can orphan cloud resources.** |
 
 ### Validation rules
 
 The webhook (`failurePolicy: Fail`) checks Services with
-`loadBalancerClass: otlbc.io/lb` on create and update:
+`loadBalancerClass: external-lb.io/lb` on create and update:
 
 - `spec.type` must be `LoadBalancer`.
 - `spec.ports` must not be empty, and every port must use `TCP`.
@@ -182,7 +182,7 @@ the AWS provider makes):
 
 `sts:GetCallerIdentity` is also called but needs no policy statement.
 `AddTags` and `ec2:CreateTags` are needed because resources are created with
-the `otlbc.io/service` tag; the `Describe*` entries cover the paginated lookups.
+the `external-lb.io/service` tag; the `Describe*` entries cover the paginated lookups.
 Consider scoping the write actions with conditions on that tag. Validate the
 policy in a test account before relying on it.
 
@@ -200,13 +200,13 @@ policy in a test account before relying on it.
 ### Install from a release
 
 Tagged releases publish the image to
-`ghcr.io/sam-rajan/out-tree-loadbalancer-controller:<tag>` and attach a
+`ghcr.io/sam-rajan/external-lb-controller:<tag>` and attach a
 versioned `install.yaml` to the
-[GitHub Release](https://github.com/sam-rajan/out-tree-loadbalancer-controller/releases).
+[GitHub Release](https://github.com/sam-rajan/external-lb-controller/releases).
 No release has been published yet. Once one exists:
 
 ```sh
-kubectl apply -f https://github.com/sam-rajan/out-tree-loadbalancer-controller/releases/download/<tag>/install.yaml
+kubectl apply -f https://github.com/sam-rajan/external-lb-controller/releases/download/<tag>/install.yaml
 ```
 
 The bundle does not include the webhook serving certificate or the webhook
@@ -218,12 +218,12 @@ steps 2 and 3 below before the controller will work. There is no Helm chart.
 1. Build and push the image:
 
    ```sh
-   make docker-build docker-push IMG=<registry>/out-tree-lb-controller:<tag>
+   make docker-build docker-push IMG=<registry>/external-lb-controller:<tag>
    ```
 
 2. Create the webhook serving certificate. The manager mounts a Secret named
    `webhook-server-cert` (keys `tls.crt`, `tls.key`) in
-   the `out-tree-lb-controller-system` namespace. The repository does not
+   the `external-lb-controller-system` namespace. The repository does not
    provision it (no cert-manager integration yet), and the
    `ValidatingWebhookConfiguration` needs a matching `caBundle`.
 
@@ -233,7 +233,7 @@ steps 2 and 3 below before the controller will work. There is no Helm chart.
 4. Deploy:
 
    ```sh
-   make deploy IMG=<registry>/out-tree-lb-controller:<tag>
+   make deploy IMG=<registry>/external-lb-controller:<tag>
    ```
 
    There are no CRDs, so `make install` is a no-op.
@@ -279,7 +279,7 @@ E2E tests create their own Kind cluster; do not point them at a real cluster.
 
 ## License
 
-Copyright 2026 The out-tree-loadbalancer-controller Authors.
+Copyright 2026 The external-lb-controller Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

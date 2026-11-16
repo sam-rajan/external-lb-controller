@@ -1,5 +1,5 @@
 /*
-Copyright 2026 The out-tree-loadbalancer-controller Authors.
+Copyright 2026 The external-lb-controller Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -36,12 +36,12 @@ import (
 
 	"k8s.io/client-go/tools/events"
 
-	"github.com/sam-rajan/out-tree-loadbalancer-controller/internal/lb"
+	"github.com/sam-rajan/external-lb-controller/internal/lb"
 )
 
 const (
-	lbClass     = "otlbc.io/lb"
-	lbFinalizer = "otlbc.io/lb-cleanup"
+	lbClass     = "external-lb.io/lb"
+	lbFinalizer = "external-lb.io/lb-cleanup"
 
 	// annotationSkipLBCleanup is an operator-set escape hatch: when "true",
 	// reconcileDelete skips DeleteLB and removes the finalizer unconditionally.
@@ -49,7 +49,7 @@ const (
 	// cloud credentials, the cluster no longer running on the provider that
 	// created the resource) and an operator has decided to accept the risk of
 	// an orphaned cloud load balancer in order to unblock Service deletion.
-	annotationSkipLBCleanup = "otlbc.io/skip-lb-cleanup"
+	annotationSkipLBCleanup = "external-lb.io/skip-lb-cleanup"
 )
 
 // ServiceReconciler reconciles a Service object
@@ -77,7 +77,7 @@ func (r *ServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	// Ensure that the service has the lbClassname and hence owned by us
 	if !r.ownedByUs(svc) {
-		logf.FromContext(ctx).V(1).Info("Service is not owned by otlbc", "name", svc.Name)
+		logf.FromContext(ctx).V(1).Info("Service is not owned by external-lb-controller", "name", svc.Name)
 		return ctrl.Result{}, nil
 	}
 

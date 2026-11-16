@@ -7,10 +7,10 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	"github.com/sam-rajan/out-tree-loadbalancer-controller/internal/lb"
+	"github.com/sam-rajan/external-lb-controller/internal/lb"
 )
 
-const lbClass = "otlbc.io/lb"
+const lbClass = "external-lb.io/lb"
 
 func validate(svc *corev1.Service) (admission.Warnings, error) {
 	if !ownedByUs(svc) {

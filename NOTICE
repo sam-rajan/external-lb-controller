@@ -1,8 +1,8 @@
-out-tree-loadbalancer-controller
-Copyright 2026 The out-tree-loadbalancer-controller Authors
+external-lb-controller
+Copyright 2026 The external-lb-controller Authors
 
 This product includes software developed at
-the out-tree-loadbalancer-controller project (https://github.com/sam-rajan/out-tree-loadbalancer-controller).
+the external-lb-controller project (https://github.com/sam-rajan/external-lb-controller).
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

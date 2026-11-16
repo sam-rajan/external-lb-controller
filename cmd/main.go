@@ -1,5 +1,5 @@
 /*
-Copyright 2026 The out-tree-loadbalancer-controller Authors.
+Copyright 2026 The external-lb-controller Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -34,10 +34,10 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	"github.com/sam-rajan/out-tree-loadbalancer-controller/internal/controller"
-	"github.com/sam-rajan/out-tree-loadbalancer-controller/internal/lb"
-	_ "github.com/sam-rajan/out-tree-loadbalancer-controller/internal/lb/aws" // register AWS ELBv2 provider
-	servicewebhook "github.com/sam-rajan/out-tree-loadbalancer-controller/internal/webhook/service"
+	"github.com/sam-rajan/external-lb-controller/internal/controller"
+	"github.com/sam-rajan/external-lb-controller/internal/lb"
+	_ "github.com/sam-rajan/external-lb-controller/internal/lb/aws" // register AWS ELBv2 provider
+	servicewebhook "github.com/sam-rajan/external-lb-controller/internal/webhook/service"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -65,7 +65,7 @@ func main() {
 		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: cfg.ProbeAddr,
 		LeaderElection:         cfg.EnableLeaderElection,
-		LeaderElectionID:       "c0db1dc7.otlbc.io",
+		LeaderElectionID:       "c0db1dc7.external-lb.io",
 	})
 	if err != nil {
 		setupLog.Error(err, "Failed to start manager")
@@ -86,7 +86,7 @@ func main() {
 		Client:    mgr.GetClient(),
 		Scheme:    mgr.GetScheme(),
 		LBManager: lbManager,
-		Recorder:  mgr.GetEventRecorder("otlbc-controller"),
+		Recorder:  mgr.GetEventRecorder("external-lb-controller"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "service")
 		os.Exit(1)

@@ -69,7 +69,7 @@ test: manifests generate fmt vet setup-envtest ## Run tests.
 # - KUBECTL_KUBERC=true
 # CertManager is installed by default; skip with:
 # - CERT_MANAGER_INSTALL_SKIP=true
-KIND_CLUSTER ?= out-tree-lb-controller-test-e2e
+KIND_CLUSTER ?= external-lb-controller-test-e2e
 
 .PHONY: setup-test-e2e
 setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
@@ -117,7 +117,7 @@ WEBHOOK_CERTS_DIR ?= $(LOCALBIN)/webhook-certs
 ## Service DNS name the API server uses when calling the webhook via
 ## clientConfig.service (see test/manual/webhook-service.yaml) - must be in
 ## the cert's SAN list or TLS hostname verification fails.
-WEBHOOK_SERVICE_HOSTNAME ?= out-tree-lb-controller-webhook-service.default.svc
+WEBHOOK_SERVICE_HOSTNAME ?= external-lb-controller-webhook-service.default.svc
 
 .PHONY: webhook-certs
 webhook-certs: ## Generate a self-signed cert/key for running the webhook server locally (make run).
@@ -158,10 +158,10 @@ PLATFORMS ?= linux/arm64,linux/amd64,linux/s390x,linux/ppc64le
 docker-buildx: ## Build and push docker image for the manager for cross-platform support
 	# copy existing Dockerfile and insert --platform=${BUILDPLATFORM} into Dockerfile.cross, and preserve the original Dockerfile
 	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
-	- $(CONTAINER_TOOL) buildx create --name out-tree-lb-controller-builder
-	$(CONTAINER_TOOL) buildx use out-tree-lb-controller-builder
+	- $(CONTAINER_TOOL) buildx create --name external-lb-controller-builder
+	$(CONTAINER_TOOL) buildx use external-lb-controller-builder
 	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${IMG} -f Dockerfile.cross .
-	- $(CONTAINER_TOOL) buildx rm out-tree-lb-controller-builder
+	- $(CONTAINER_TOOL) buildx rm external-lb-controller-builder
 	rm Dockerfile.cross
 
 .PHONY: build-installer

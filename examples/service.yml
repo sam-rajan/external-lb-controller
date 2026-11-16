@@ -12,7 +12,7 @@ metadata:
     service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "443"
 spec:
   type: LoadBalancer
-  loadBalancerClass: otlbc.io/lb
+  loadBalancerClass: external-lb.io/lb
   selector:
     run: nginx
   ports:

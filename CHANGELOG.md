@@ -8,16 +8,16 @@ v0.1.0. Until then, anything may change.
 ## [Unreleased]
 
 ### Added
-- Controller for `Service` objects with `loadBalancerClass: otlbc.io/lb`,
+- Controller for `Service` objects with `loadBalancerClass: external-lb.io/lb`,
   provisioning AWS NLBs and ALBs (target groups, listeners, security groups,
   subnet discovery, TLS via ACM certificates).
 - Validating admission webhook for Services using the class.
 - `--cloud-provider` and `--cluster-name` flags.
-- `otlbc.io/skip-lb-cleanup` escape hatch for Services whose cloud load
+- `external-lb.io/skip-lb-cleanup` escape hatch for Services whose cloud load
   balancer can never be deleted.
 - Unit tests for the controller, webhook, provider selection and AWS logic.
 - Release workflow publishing the image to GHCR and a versioned
   `install.yaml` to GitHub Releases on `v*` tags.
 - README, `docs/operations.md`, and community files.
 
-[Unreleased]: https://github.com/sam-rajan/out-tree-loadbalancer-controller/commits/main
+[Unreleased]: https://github.com/sam-rajan/external-lb-controller/commits/main

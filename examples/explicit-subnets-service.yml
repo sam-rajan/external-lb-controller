@@ -8,7 +8,7 @@ metadata:
     service.beta.kubernetes.io/aws-load-balancer-subnets: subnet-0123456789abcdef0,subnet-0fedcba9876543210
 spec:
   type: LoadBalancer
-  loadBalancerClass: otlbc.io/lb
+  loadBalancerClass: external-lb.io/lb
   selector:
     run: nginx
   ports:

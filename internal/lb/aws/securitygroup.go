@@ -35,7 +35,7 @@ func (p *elbProvider) ensureSecurityGroup(ctx context.Context, svc *corev1.Servi
 
 	created, err := p.ec2.CreateSecurityGroup(ctx, &ec2.CreateSecurityGroupInput{
 		GroupName:   aws.String(securityGroupName(svc)),
-		Description: aws.String("Managed by otlbc for " + ownerTag),
+		Description: aws.String("Managed by external-lb-controller for " + ownerTag),
 		VpcId:       aws.String(vpcID),
 		TagSpecifications: []ec2types.TagSpecification{{
 			ResourceType: ec2types.ResourceTypeSecurityGroup,
