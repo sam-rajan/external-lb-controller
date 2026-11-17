@@ -1,6 +1,5 @@
 # This patch adds the args, ports, and volumes to allow the manager to serve the webhook using the webhook-server-cert Secret.
 
-# Add the webhook-server-cert volume mount
 - op: add
   path: /spec/template/spec/containers/0/volumeMounts/-
   value:
@@ -8,12 +7,10 @@
     name: webhook-certs
     readOnly: true
 
-# Add the --webhook-cert-path argument for the webhook server
 - op: add
   path: /spec/template/spec/containers/0/args/-
   value: --webhook-cert-path=/tmp/k8s-webhook-server/serving-certs
 
-# Add the webhook server port
 - op: add
   path: /spec/template/spec/containers/0/ports/-
   value:
@@ -21,7 +18,6 @@
     name: webhook-server
     protocol: TCP
 
-# Add the webhook-server-cert volume configuration
 - op: add
   path: /spec/template/spec/volumes/-
   value:

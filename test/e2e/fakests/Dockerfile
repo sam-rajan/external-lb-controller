@@ -1,5 +1,4 @@
-# Image for the fake STS endpoint used by the e2e suite. It uses the same base
-# images as the controller's Dockerfile so no extra registry is needed.
+# Same base images as the controller's Dockerfile, so no extra registry is needed.
 FROM golang:1.26 AS builder
 WORKDIR /workspace
 COPY main.go .

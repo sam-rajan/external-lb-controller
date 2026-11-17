@@ -1,12 +1,6 @@
-# controller-gen (as of v0.20.1) has no marker for matchConditions, so this
-# patch layers it onto the generated ValidatingWebhookConfiguration rather
-# than hand-editing manifests.yaml (auto-generated). It scopes the webhook to
-# only Services using our loadBalancerClass, so failurePolicy: Fail can't block
-# unrelated Service writes cluster-wide if the webhook pod is ever unavailable.
-#
-# The has() guard is required: spec.loadBalancerClass is absent on most
-# Services, and reading an absent field is a CEL evaluation error, which
-# failurePolicy: Fail treats as a rejection of the request.
+# controller-gen has no matchConditions marker, so this patch scopes the webhook to Services using our class.
+# The has() guard is required: reading an absent spec.loadBalancerClass is a CEL error, which
+# failurePolicy: Fail treats as a rejection.
 - op: add
   path: /webhooks/0/matchConditions
   value:

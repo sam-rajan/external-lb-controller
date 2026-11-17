@@ -1,9 +1,5 @@
-# A self-signed Issuer and the Certificate that cert-manager turns into the
-# webhook-server-cert Secret mounted by the manager (see
-# config/default/manager_webhook_patch.yaml). The dnsNames and the
-# cert-manager.io/inject-ca-from annotation on the webhook configuration are
-# filled in by the replacements in config/default/kustomization.yaml.
-# More information: https://cert-manager.io/docs/
+# Self-signed Issuer and the Certificate that produces the webhook-server-cert Secret.
+# dnsNames and the webhook CA injection annotation are filled in by config/default replacements.
 apiVersion: cert-manager.io/v1
 kind: Issuer
 metadata:

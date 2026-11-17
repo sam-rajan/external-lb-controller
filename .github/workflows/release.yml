@@ -1,9 +1,7 @@
 name: Release
 
-# Publishes a multi-arch (linux/amd64, linux/arm64) controller image to GHCR and
-# attaches a versioned install bundle (dist/install.yaml) to a GitHub Release
-# when a v* tag is pushed. Stable tags (no "-" suffix, e.g. v0.1.0) also move
-# the "latest" tag; pre-releases (e.g. v0.1.0-rc1) do not.
+# Publishes a multi-arch image to GHCR and install.yaml to a GitHub Release on v* tags.
+# Stable tags also move "latest"; pre-releases (v0.1.0-rc1) do not.
 
 on:
   push:
