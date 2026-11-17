@@ -195,7 +195,8 @@ policy in a test account before relying on it.
 - `kubectl` and a Kubernetes cluster you can reach (the controller uses
   `EndpointSlice`, so v1.21+ is required)
 - AWS credentials with the permissions above
-- A TLS Secret for the webhook (see below)
+- [cert-manager](https://cert-manager.io/docs/installation/) installed in the
+  cluster; it issues the webhook serving certificate
 
 ### Install from a release
 
@@ -210,9 +211,10 @@ No release has been published yet. Once one exists:
 kubectl apply -f https://github.com/sam-rajan/external-lb-controller/releases/download/<tag>/install.yaml
 ```
 
-The bundle does not include the webhook serving certificate or the webhook
-`caBundle`, and the pod needs AWS credentials and `--cluster-name`; follow
-steps 2 and 3 below before the controller will work. There is no Helm chart.
+The bundle includes a cert-manager `Issuer` and `Certificate` for the webhook
+and injects the CA into the webhook configuration, so cert-manager must already
+be installed. The pod still needs AWS credentials and `--cluster-name`; follow
+step 2 below before the controller will work. There is no Helm chart.
 
 ### Deploy from source
 
@@ -222,16 +224,10 @@ steps 2 and 3 below before the controller will work. There is no Helm chart.
    make docker-build docker-push IMG=<registry>/external-lb-controller:<tag>
    ```
 
-2. Create the webhook serving certificate. The manager mounts a Secret named
-   `webhook-server-cert` (keys `tls.crt`, `tls.key`) in
-   the `external-lb-controller-system` namespace. The repository does not
-   provision it (no cert-manager integration yet), and the
-   `ValidatingWebhookConfiguration` needs a matching `caBundle`.
-
-3. Set `--cluster-name` and give the pod AWS credentials (for example IRSA or
+2. Set `--cluster-name` and give the pod AWS credentials (for example IRSA or
    the node instance profile) by patching `config/manager/manager.yaml`.
 
-4. Deploy:
+3. Deploy:
 
    ```sh
    make deploy IMG=<registry>/external-lb-controller:<tag>
@@ -239,7 +235,7 @@ steps 2 and 3 below before the controller will work. There is no Helm chart.
 
    There are no CRDs, so `make install` is a no-op.
 
-5. Create a Service as shown in [Usage](#usage).
+4. Create a Service as shown in [Usage](#usage).
 
 ### Run locally
 

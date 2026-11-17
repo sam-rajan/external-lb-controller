@@ -12,7 +12,9 @@ v0.1.0. Until then, anything may change.
   provisioning AWS NLBs and ALBs (target groups, listeners, security groups,
   subnet discovery, TLS via ACM certificates).
 - Validating admission webhook for Services using the class.
-- `--cloud-provider` and `--cluster-name` flags.
+- cert-manager `Issuer` and `Certificate` in `config/certmanager` for the webhook serving
+  certificate, with CA injection into the webhook configuration.
+- `--cloud-provider`, `--cluster-name` and `--enable-http2` flags (HTTP/2 is off by default).
 - `external-lb.io/skip-lb-cleanup` escape hatch for Services whose cloud load
   balancer can never be deleted.
 - Unit tests for the controller, webhook, provider selection and AWS logic.
