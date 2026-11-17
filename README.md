@@ -199,8 +199,9 @@ policy in a test account before relying on it.
 
 ### Install from a release
 
-Tagged releases publish the image to
-`ghcr.io/sam-rajan/external-lb-controller:<tag>` and attach a
+Tagged releases publish a multi-arch (`linux/amd64`, `linux/arm64`) image to
+`ghcr.io/sam-rajan/external-lb-controller:<tag>` (stable releases also move the
+`latest` tag; pre-releases such as `v0.1.0-rc1` do not) and attach a
 versioned `install.yaml` to the
 [GitHub Release](https://github.com/sam-rajan/external-lb-controller/releases).
 No release has been published yet. Once one exists:

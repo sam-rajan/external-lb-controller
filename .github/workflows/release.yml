@@ -1,7 +1,9 @@
 name: Release
 
-# Publishes the controller image to GHCR and attaches a versioned install
-# bundle (dist/install.yaml) to a GitHub Release when a v* tag is pushed.
+# Publishes a multi-arch (linux/amd64, linux/arm64) controller image to GHCR and
+# attaches a versioned install bundle (dist/install.yaml) to a GitHub Release
+# when a v* tag is pushed. Stable tags (no "-" suffix, e.g. v0.1.0) also move
+# the "latest" tag; pre-releases (e.g. v0.1.0-rc1) do not.
 
 on:
   push:
@@ -39,8 +41,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: echo "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-      - name: Build and push image
-        run: make docker-build docker-push IMG="${IMAGE,,}:${TAG}"
+      - name: Build and push multi-arch image
+        run: make docker-buildx IMG="${IMAGE,,}:${TAG}"
+
+      - name: Tag image as latest (stable releases only)
+        if: ${{ !contains(github.ref_name, '-') }}
+        run: docker buildx imagetools create --tag "${IMAGE,,}:latest" "${IMAGE,,}:${TAG}"
 
       - name: Build install bundle
         run: make build-installer IMG="${IMAGE,,}:${TAG}"
