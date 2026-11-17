@@ -1,0 +1,8 @@
+# Teaches kustomize to follow the namePrefix into the Certificate's issuerRef.
+nameReference:
+- kind: Issuer
+  group: cert-manager.io
+  fieldSpecs:
+  - kind: Certificate
+    group: cert-manager.io
+    path: spec/issuerRef/name
