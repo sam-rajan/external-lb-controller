@@ -140,6 +140,20 @@ build-installer: manifests generate kustomize ## Generate a consolidated YAML wi
 
 ##@ Deployment
 
+.PHONY: install-manifest
+install-manifest: ## Render deploy/install.yaml for the image given by IMG.
+	cp config/manager/kustomization.yaml config/manager/kustomization.yaml.bak
+	$(MAKE) build-installer IMG=$(IMG)
+	mv config/manager/kustomization.yaml.bak config/manager/kustomization.yaml
+	mkdir -p deploy
+	cp dist/install.yaml deploy/install.yaml
+
+.PHONY: check-install-manifest
+check-install-manifest: ## Fail if deploy/install.yaml is out of date with config/.
+	@img=$$(grep -m1 'image: ghcr.io/' deploy/install.yaml | awk '{print $$2}'); \
+	$(MAKE) --no-print-directory install-manifest IMG=$$img >/dev/null && \
+	git diff --exit-code -- deploy/install.yaml || { echo "deploy/install.yaml is out of date; run: make install-manifest IMG=$$img"; exit 1; }
+
 ifndef ignore-not-found
   ignore-not-found = false
 endif

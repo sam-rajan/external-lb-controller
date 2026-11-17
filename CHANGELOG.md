@@ -12,6 +12,10 @@ v0.1.0. Until then, anything may change.
   provisioning AWS NLBs and ALBs (target groups, listeners, security groups,
   subnet discovery, TLS via ACM certificates).
 - Validating admission webhook for Services using the class.
+- `deploy/install.yaml`, a complete install manifest committed to the repository and
+  checked in CI against `config/` (`make install-manifest`).
+- `CLUSTER_NAME` environment variable on the manager, so the cluster name can be set with
+  `kubectl set env`, and `docs/iam-policy.json` with the required IAM actions.
 - cert-manager `Issuer` and `Certificate` in `config/certmanager` for the webhook serving
   certificate, with CA injection into the webhook configuration.
 - `--cloud-provider`, `--cluster-name` and `--enable-http2` flags (HTTP/2 is off by default).

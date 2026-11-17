@@ -134,51 +134,9 @@ profile).
 
 ### AWS IAM permissions
 
-The controller's identity needs the following actions (derived from the calls
-the AWS provider makes):
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "elasticloadbalancing:CreateLoadBalancer",
-        "elasticloadbalancing:DeleteLoadBalancer",
-        "elasticloadbalancing:ModifyLoadBalancerAttributes",
-        "elasticloadbalancing:SetSubnets",
-        "elasticloadbalancing:CreateTargetGroup",
-        "elasticloadbalancing:DeleteTargetGroup",
-        "elasticloadbalancing:ModifyTargetGroup",
-        "elasticloadbalancing:RegisterTargets",
-        "elasticloadbalancing:DeregisterTargets",
-        "elasticloadbalancing:DescribeTargetHealth",
-        "elasticloadbalancing:CreateListener",
-        "elasticloadbalancing:ModifyListener",
-        "elasticloadbalancing:DeleteListener",
-        "elasticloadbalancing:AddListenerCertificates",
-        "elasticloadbalancing:RemoveListenerCertificates",
-        "elasticloadbalancing:DescribeListenerCertificates",
-        "elasticloadbalancing:DescribeLoadBalancers",
-        "elasticloadbalancing:DescribeTargetGroups",
-        "elasticloadbalancing:DescribeListeners",
-        "elasticloadbalancing:DescribeTags",
-        "elasticloadbalancing:AddTags",
-        "ec2:DescribeVpcs",
-        "ec2:DescribeSubnets",
-        "ec2:DescribeSecurityGroups",
-        "ec2:CreateSecurityGroup",
-        "ec2:DeleteSecurityGroup",
-        "ec2:AuthorizeSecurityGroupIngress",
-        "ec2:RevokeSecurityGroupIngress",
-        "ec2:CreateTags"
-      ],
-      "Resource": "*"
-    }
-  ]
-}
-```
+The controller's identity needs the actions in
+[docs/iam-policy.json](docs/iam-policy.json), derived from the calls the AWS
+provider makes.
 
 `sts:GetCallerIdentity` is also called but needs no policy statement.
 `AddTags` and `ec2:CreateTags` are needed because resources are created with
@@ -205,16 +163,53 @@ Tagged releases publish a multi-arch (`linux/amd64`, `linux/arm64`) image to
 `latest` tag; pre-releases such as `v0.1.0-rc1` do not) and attach a
 versioned `install.yaml` to the
 [GitHub Release](https://github.com/sam-rajan/external-lb-controller/releases).
-No release has been published yet. Once one exists:
+There is no Helm chart.
 
-```sh
-kubectl apply -f https://github.com/sam-rajan/external-lb-controller/releases/download/<tag>/install.yaml
-```
+1. Install [cert-manager](https://cert-manager.io/docs/installation/) if the
+   cluster does not have it.
 
-The bundle includes a cert-manager `Issuer` and `Certificate` for the webhook
-and injects the CA into the webhook configuration, so cert-manager must already
-be installed. The pod still needs AWS credentials and `--cluster-name`; follow
-step 2 below before the controller will work. There is no Helm chart.
+2. Apply the manifest. It contains the namespace, RBAC, the Deployment, the
+   webhook, and a cert-manager `Issuer` and `Certificate` for the webhook:
+
+   ```sh
+   kubectl apply -f https://github.com/sam-rajan/external-lb-controller/releases/download/<tag>/install.yaml
+   ```
+
+   The same manifest is committed as [deploy/install.yaml](deploy/install.yaml),
+   pinned to the most recent published image, so you can also apply it straight
+   from the repository:
+
+   ```sh
+   kubectl apply -f https://raw.githubusercontent.com/sam-rajan/external-lb-controller/main/deploy/install.yaml
+   ```
+
+3. Give the controller AWS access using the policy in
+   [docs/iam-policy.json](docs/iam-policy.json). On EKS with IRSA, annotate the
+   service account with a role that has the policy. If your nodes' instance
+   profile already allows these actions, skip this step.
+
+   ```sh
+   kubectl -n external-lb-controller-system annotate serviceaccount \
+     external-lb-controller-controller-manager \
+     eks.amazonaws.com/role-arn=arn:aws:iam::<account-id>:role/<role-name>
+   ```
+
+4. Set the cluster name, used to auto-discover subnets for Services that do not
+   set the `subnets` annotation. Changing it restarts the pod, which also
+   picks up the annotation from step 3:
+
+   ```sh
+   kubectl -n external-lb-controller-system set env \
+     deployment/external-lb-controller-controller-manager CLUSTER_NAME=<cluster-name>
+   ```
+
+5. Check that it is running, then create a Service as shown in
+   [Usage](#usage):
+
+   ```sh
+   kubectl -n external-lb-controller-system rollout status \
+     deployment/external-lb-controller-controller-manager
+   ```
 
 ### Deploy from source
 
@@ -224,18 +219,15 @@ step 2 below before the controller will work. There is no Helm chart.
    make docker-build docker-push IMG=<registry>/external-lb-controller:<tag>
    ```
 
-2. Set `--cluster-name` and give the pod AWS credentials (for example IRSA or
-   the node instance profile) by patching `config/manager/manager.yaml`.
-
-3. Deploy:
+2. Deploy (cert-manager must be installed). There are no CRDs, so
+   `make install` is a no-op:
 
    ```sh
    make deploy IMG=<registry>/external-lb-controller:<tag>
    ```
 
-   There are no CRDs, so `make install` is a no-op.
-
-4. Create a Service as shown in [Usage](#usage).
+3. Configure AWS access and the cluster name as in steps 3 and 4 above, then
+   create a Service as shown in [Usage](#usage).
 
 ### Run locally
 

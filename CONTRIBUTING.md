@@ -67,7 +67,9 @@ Maintainers release by pushing a `v*` tag. The
 [release workflow](.github/workflows/release.yml) runs the tests, publishes
 `ghcr.io/sam-rajan/external-lb-controller:<tag>` and attaches
 `install.yaml` to a GitHub Release. Move the "Unreleased" changelog entries
-under the new version first.
+under the new version first. After a release, point the committed manifest at
+the new image with `make install-manifest IMG=ghcr.io/sam-rajan/external-lb-controller:<tag>`;
+CI fails if `deploy/install.yaml` no longer matches `config/`.
 
 ## License
 
