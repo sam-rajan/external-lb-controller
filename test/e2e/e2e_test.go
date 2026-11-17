@@ -72,6 +72,9 @@ var _ = Describe("Manager", Ordered, func() {
 		cmd = exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", managerImage))
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the controller-manager")
+
+		By("giving the manager a fake STS endpoint so the AWS provider can start")
+		deployFakeSTS()
 	})
 
 	// After all tests have been executed, clean up by undeploying the controller, uninstalling CRDs,
