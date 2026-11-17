@@ -14,7 +14,6 @@ import (
 // ServiceValidator validates Service objects that use the external-lb.io/lb load balancer class.
 type ServiceValidator struct{}
 
-// SetupServiceValidatorWithManager registers the ServiceValidator webhook with the manager.
 func SetupServiceValidatorWithManager(mgr ctrl.Manager) error {
 	return builder.WebhookManagedBy(mgr, &corev1.Service{}).
 		WithValidator(&ServiceValidator{}).

@@ -12,8 +12,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-// reconcileSubnets updates the load balancer's subnets to match desired, if
-// they've drifted (e.g. annotationSubnets was edited after creation).
 func (p *elbProvider) reconcileSubnets(ctx context.Context, elb *types.LoadBalancer, desired []string) error {
 	current := make([]string, 0, len(elb.AvailabilityZones))
 	for _, az := range elb.AvailabilityZones {
@@ -47,9 +45,6 @@ func subnetSetEqual(a, b []string) bool {
 	return true
 }
 
-// reconcileLoadBalancerAttributes applies annotationLBAttributes, if set, to
-// the load balancer. ModifyLoadBalancerAttributes only touches the attributes
-// present in the call, so this is safe to call on every reconcile.
 func (p *elbProvider) reconcileLoadBalancerAttributes(ctx context.Context, lbARN string, svc *corev1.Service) error {
 	attrs := parseLBAttributes(svc.Annotations[annotationLBAttributes])
 	if len(attrs) == 0 {
@@ -62,9 +57,6 @@ func (p *elbProvider) reconcileLoadBalancerAttributes(ctx context.Context, lbARN
 	return err
 }
 
-// parseLBAttributes parses a comma-separated "key=value,key=value" string
-// (the same format used by aws-load-balancer-controller) into ELBv2
-// LoadBalancerAttribute values.
 func parseLBAttributes(v string) []types.LoadBalancerAttribute {
 	var attrs []types.LoadBalancerAttribute
 	for _, kv := range splitCSV(v) {
@@ -80,10 +72,6 @@ func parseLBAttributes(v string) []types.LoadBalancerAttribute {
 	return attrs
 }
 
-// reconcileTargetGroupHealthCheck applies any of the annotationHealthCheck*
-// annotations that are set to the target group. Fields left unset in the
-// ModifyTargetGroup call are left unchanged by AWS, so only annotations that
-// are actually present are included; the call is skipped entirely if none are set.
 func (p *elbProvider) reconcileTargetGroupHealthCheck(ctx context.Context, tgARN string, svc *corev1.Service) error {
 	input := &elbv2.ModifyTargetGroupInput{TargetGroupArn: aws.String(tgARN)}
 	var changed bool

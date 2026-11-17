@@ -37,10 +37,6 @@ import (
 	"github.com/sam-rajan/external-lb-controller/internal/lb"
 )
 
-// These tests use a fake API server client and a fake lb.Provider, so unlike
-// the Ginkgo suite in suite_test.go they need neither envtest binaries nor
-// cloud credentials.
-
 type fakeProvider struct {
 	hostname  string
 	ensureErr error
@@ -64,8 +60,6 @@ func (f *fakeProvider) DeleteLB(context.Context, *corev1.Service) error {
 
 var fakeProviderCounter int
 
-// newReconciler wires a ServiceReconciler to a fake client holding objs and
-// to fp, registered through the public lb registry.
 func newReconciler(t *testing.T, fp *fakeProvider, objs ...client.Object) (*ServiceReconciler, client.Client, *events.FakeRecorder) {
 	t.Helper()
 
@@ -190,7 +184,6 @@ func TestReconcileUpsert(t *testing.T) {
 		t.Errorf("provider got slices %v, want only web-abc", fp.gotSlices)
 	}
 
-	// Idempotent: a second reconcile keeps a single finalizer and the same status.
 	if _, err := doReconcile(r); err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +236,6 @@ func TestReconcileDelete(t *testing.T) {
 	if fp.deleteCalls != 1 {
 		t.Errorf("DeleteLB called %d times, want 1", fp.deleteCalls)
 	}
-	// The fake client removes an object once its last finalizer is gone.
 	svc := &corev1.Service{}
 	err := c.Get(context.Background(), types.NamespacedName{Namespace: "ns", Name: "web"}, svc)
 	if client.IgnoreNotFound(err) != nil {

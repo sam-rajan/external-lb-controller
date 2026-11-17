@@ -8,7 +8,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	// Registers the AWS annotation validators with internal/lb.
 	_ "github.com/sam-rajan/external-lb-controller/internal/lb/aws"
 )
 
@@ -37,7 +36,7 @@ func TestValidateCreate(t *testing.T) {
 	tests := []struct {
 		name    string
 		mutate  func(*corev1.Service)
-		wantErr string // empty means the Service must be accepted
+		wantErr string
 	}{
 		{"valid", nil, ""},
 		{"valid with annotations", func(s *corev1.Service) {

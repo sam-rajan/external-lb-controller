@@ -30,12 +30,8 @@ import (
 	"github.com/sam-rajan/external-lb-controller/test/utils"
 )
 
-// The AWS provider only counts as detected when sts:GetCallerIdentity succeeds
-// (see internal/lb/aws/provider.go), and the manager exits at startup when no
-// provider is detected. The Kind cluster used by these tests has no AWS
-// account, so the suite runs a tiny in-cluster fake of the one STS call the
-// controller makes at startup and points the manager's AWS SDK at it. The
-// controller code itself is exercised unchanged.
+// The manager exits unless a cloud provider is detected, and the AWS provider needs a working
+// sts:GetCallerIdentity. Kind has no AWS account, so the suite fakes that one STS call.
 
 const (
 	fakeSTSName = "fake-sts"
@@ -43,13 +39,9 @@ const (
 	managerName = "external-lb-controller-controller-manager"
 )
 
-// fakeSTSImage is built from test/e2e/fakests and loaded into Kind, so the suite
-// does not depend on pulling an image from an external registry (which is
-// rate limited on shared CI runners).
+// fakeSTSImage is built locally and loaded into Kind; pulling one is rate limited (429) on CI runners.
 const fakeSTSImage = "example.com/fake-sts:v0.0.1"
 
-// fakeSTSManifest is a restricted-policy-compliant Deployment and Service that
-// answer every request with a canned GetCallerIdentity response.
 const fakeSTSManifest = `apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -97,9 +89,7 @@ spec:
     targetPort: 8080
 `
 
-// deployFakeSTS starts the fake STS endpoint and configures the already
-// deployed manager to use it with dummy credentials. Changing the manager's
-// environment triggers a rollout, so the crash-looping pod is replaced.
+// deployFakeSTS starts the fake STS and points the manager at it, which triggers a rollout.
 func deployFakeSTS() {
 	containerTool := "docker"
 	if v, ok := os.LookupEnv("CONTAINER_TOOL"); ok {

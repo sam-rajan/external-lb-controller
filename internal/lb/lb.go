@@ -8,16 +8,12 @@ import (
 	discoveryv1 "k8s.io/api/discovery/v1"
 )
 
-// Manager delegates load balancer operations to the detected cloud Provider.
 type Manager struct {
 	provider Provider
 }
 
-// NewManager selects a Provider according to cfg.CloudProvider. "auto" (or
-// empty) probes every registered Detector in order and uses the first that
-// reports itself applicable; any other value must match a registered
-// Detector's name exactly, and that Detector's own probe still runs (it is
-// not used as a bypass).
+// NewManager picks a Provider: "auto" probes registered Detectors in order; a named provider
+// must still pass its own probe.
 func NewManager(ctx context.Context, cfg ProviderConfig) (*Manager, error) {
 	if cfg.CloudProvider == "" || cfg.CloudProvider == "auto" {
 		for _, nd := range registry {

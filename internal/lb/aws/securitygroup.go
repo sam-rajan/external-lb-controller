@@ -13,7 +13,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-// ensureSecurityGroup finds the auto-managed SG for this service, or creates one.
 func (p *elbProvider) ensureSecurityGroup(ctx context.Context, svc *corev1.Service, ownerTag, vpcID string) (string, error) {
 	var sgs []ec2types.SecurityGroup
 	paginator := ec2.NewDescribeSecurityGroupsPaginator(p.ec2, &ec2.DescribeSecurityGroupsInput{
@@ -50,10 +49,6 @@ func (p *elbProvider) ensureSecurityGroup(ctx context.Context, svc *corev1.Servi
 	return aws.ToString(created.GroupId), nil
 }
 
-// reconcileSecurityGroupIngress ensures the auto-managed SG allows inbound
-// TCP traffic on each of the Service's listener ports from the resolved
-// source ranges, adding/removing rules to match exactly (this SG is fully
-// owned by the controller, so any rule not in the desired set is stale).
 func (p *elbProvider) reconcileSecurityGroupIngress(ctx context.Context, svc *corev1.Service, sgID, vpcID string) error {
 	ranges, err := p.resolveSourceRanges(ctx, svc, vpcID)
 	if err != nil {

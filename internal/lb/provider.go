@@ -8,27 +8,21 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// Provider manages the lifecycle of a cloud load balancer for a Kubernetes Service.
+// Provider manages the lifecycle of a cloud load balancer for a Service.
 type Provider interface {
-	// EnsureLB creates or updates the load balancer for svc using the given endpoint slices.
-	// Returns the provisioned hostname or IP to publish on the Service status.
+	// EnsureLB creates or updates the load balancer and returns the hostname or IP for the Service status.
 	EnsureLB(ctx context.Context, svc *corev1.Service, epSlices []discoveryv1.EndpointSlice) (hostname string, err error)
 
-	// DeleteLB removes the load balancer associated with svc.
 	DeleteLB(ctx context.Context, svc *corev1.Service) error
 }
 
-// ProviderConfig carries configuration common to all Providers, sourced from
-// controller flags rather than per-Service annotations.
+// ProviderConfig holds settings common to all Providers, taken from controller flags.
 type ProviderConfig struct {
 	ClusterName string
 
-	// CloudProvider selects which registered provider to use: "auto" (or
-	// empty) probes every registered Detector in order, otherwise it must
-	// match a Detector's registered name exactly (e.g. "aws").
+	// CloudProvider is "auto" (probe all) or a registered provider name such as "aws".
 	CloudProvider string
 
-	// K8sClient lets a Provider read cluster state (e.g. Node objects to
-	// resolve instance IDs for node/instance-mode target registration).
+	// K8sClient lets a Provider read cluster state, e.g. Nodes for instance targets.
 	K8sClient client.Client
 }

@@ -37,7 +37,6 @@ func detector(p Provider, ok bool, probed *[]string, name string) Detector {
 	}
 }
 
-// withRegistry swaps the global registry for the duration of the test.
 func withRegistry(t *testing.T, entries ...namedDetector) {
 	t.Helper()
 	saved := registry

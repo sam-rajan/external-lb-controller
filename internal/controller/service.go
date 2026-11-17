@@ -43,16 +43,11 @@ const (
 	lbClass     = "external-lb.io/lb"
 	lbFinalizer = "external-lb.io/lb-cleanup"
 
-	// annotationSkipLBCleanup is an operator-set escape hatch: when "true",
-	// reconcileDelete skips DeleteLB and removes the finalizer unconditionally.
-	// This is for cases where LB deletion can never succeed (e.g. revoked
-	// cloud credentials, the cluster no longer running on the provider that
-	// created the resource) and an operator has decided to accept the risk of
-	// an orphaned cloud load balancer in order to unblock Service deletion.
+	// annotationSkipLBCleanup is an operator escape hatch: when "true", deletion skips DeleteLB
+	// and removes the finalizer, accepting an orphaned cloud load balancer.
 	annotationSkipLBCleanup = "external-lb.io/skip-lb-cleanup"
 )
 
-// ServiceReconciler reconciles a Service object
 type ServiceReconciler struct {
 	client.Client
 	Scheme    *runtime.Scheme
@@ -75,7 +70,6 @@ func (r *ServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// Ensure that the service has the lbClassname and hence owned by us
 	if !r.ownedByUs(svc) {
 		logf.FromContext(ctx).V(1).Info("Service is not owned by external-lb-controller", "name", svc.Name)
 		return ctrl.Result{}, nil
@@ -89,7 +83,6 @@ func (r *ServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 }
 
 func (r *ServiceReconciler) reconcileUpsert(ctx context.Context, svc *corev1.Service) (ctrl.Result, error) {
-	// Add finalizer so we can get the responsibility of the deletion.
 	patch := client.MergeFrom(svc.DeepCopy())
 	if controllerutil.AddFinalizer(svc, lbFinalizer) {
 		if err := r.Patch(ctx, svc, patch); err != nil {
@@ -161,7 +154,6 @@ func (r *ServiceReconciler) ownedByUs(svc *corev1.Service) bool {
 		*svc.Spec.LoadBalancerClass == lbClass
 }
 
-// SetupWithManager sets up the controller with the Manager.
 func (r *ServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	eventFilter := predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {

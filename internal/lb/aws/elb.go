@@ -1,5 +1,4 @@
-// Package aws registers an AWS ELB-backed load balancer provider, capable of
-// provisioning either an ALB or an NLB depending on Service configuration.
+// Package aws provides the AWS ELBv2 (NLB and ALB) load balancer provider.
 package aws
 
 import (
@@ -72,7 +71,6 @@ func (p *elbProvider) EnsureLB(ctx context.Context, svc *corev1.Service, epSlice
 	return aws.ToString(elb.DNSName), nil
 }
 
-// findLoadBalancer returns the load balancer tagged with ownerTag, or nil if none exists.
 func (p *elbProvider) findLoadBalancer(ctx context.Context, ownerTag string) (*types.LoadBalancer, error) {
 	var allLBs []types.LoadBalancer
 	paginator := elbv2.NewDescribeLoadBalancersPaginator(p.elb, &elbv2.DescribeLoadBalancersInput{})
@@ -152,7 +150,7 @@ func (p *elbProvider) DeleteLB(ctx context.Context, svc *corev1.Service) error {
 		return fmt.Errorf("find load balancer: %w", err)
 	}
 	if elb == nil {
-		return nil // already gone
+		return nil
 	}
 
 	// Delete listeners first (required before deleting the load balancer).
@@ -181,9 +179,8 @@ func (p *elbProvider) DeleteLB(ctx context.Context, svc *corev1.Service) error {
 		return fmt.Errorf("delete load balancer: %w", err)
 	}
 
-	// Wait for the load balancer to be fully deleted before releasing dependent
-	// resources. AWS deletes load balancers asynchronously; SG and target groups
-	// cannot be removed while it still holds references to them.
+	// AWS deletes load balancers asynchronously; wait, because the security group and target
+	// groups cannot be removed while the load balancer still references them.
 	waiter := elbv2.NewLoadBalancersDeletedWaiter(p.elb)
 	if err := waiter.Wait(ctx, &elbv2.DescribeLoadBalancersInput{
 		LoadBalancerArns: []string{aws.ToString(elb.LoadBalancerArn)},
@@ -204,7 +201,6 @@ func (p *elbProvider) DeleteLB(ctx context.Context, svc *corev1.Service) error {
 		}
 	}
 
-	// Delete the auto-managed security group if one was created (user-provided SGs are left alone).
 	if err := p.deleteMangedSecurityGroup(ctx, ownerTag, elb); err != nil {
 		return fmt.Errorf("delete managed security group: %w", err)
 	}

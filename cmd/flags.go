@@ -6,7 +6,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
 
-// Config holds all command-line configuration for the controller manager.
 type Config struct {
 	MetricsAddr     string
 	MetricsCertDir  string
@@ -28,12 +27,9 @@ type Config struct {
 	ZapOptions zap.Options
 }
 
-// parseFlags registers all flags and calls flag.Parse, returning the populated Config.
 func parseFlags() *Config {
 	cfg := &Config{}
 
-	// Default to production logging (JSON, info level). Developers can opt into
-	// human-readable debug output with --zap-devel.
 	cfg.ZapOptions = zap.Options{Development: false}
 
 	flag.StringVar(&cfg.MetricsAddr, "metrics-bind-address", "0",

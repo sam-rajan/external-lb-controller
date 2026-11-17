@@ -21,8 +21,7 @@ import (
 	"crypto/tls"
 	"os"
 
-	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
-	// to ensure that exec-entrypoint and run can make use of them.
+	// Register Kubernetes client auth plugins (Azure, GCP, OIDC, ...).
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -115,10 +114,8 @@ func main() {
 	}
 }
 
-// tlsOptions returns TLS settings shared by the metrics and webhook servers.
-// HTTP/2 is disabled unless explicitly enabled, because it is vulnerable to the
-// HTTP/2 Stream Cancellation and Rapid Reset attacks (CVE-2023-44487,
-// CVE-2023-39325).
+// tlsOptions disables HTTP/2 unless enabled, to avoid the Rapid Reset and Stream
+// Cancellation attacks (CVE-2023-44487, CVE-2023-39325).
 func tlsOptions(cfg *Config) []func(*tls.Config) {
 	if cfg.EnableHTTP2 {
 		return nil

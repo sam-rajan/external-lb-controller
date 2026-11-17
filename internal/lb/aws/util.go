@@ -10,12 +10,8 @@ import (
 	discoveryv1 "k8s.io/api/discovery/v1"
 )
 
-// describeTagsMaxARNs is the maximum number of resource ARNs the ELBv2
-// DescribeTags API accepts in a single call.
 const describeTagsMaxARNs = 20
 
-// describeTags fetches tag descriptions for arbitrarily many resource ARNs,
-// batching requests to stay within the DescribeTags API's per-call limit.
 func (p *elbProvider) describeTags(ctx context.Context, arns []string) ([]types.TagDescription, error) {
 	var all []types.TagDescription
 	for i := 0; i < len(arns); i += describeTagsMaxARNs {
@@ -44,7 +40,6 @@ func splitCSV(s string) []string {
 	return out
 }
 
-// endpointTargets collects all ready endpoint IPs from the given EndpointSlices.
 func endpointTargets(epSlices []discoveryv1.EndpointSlice) []string {
 	var ips []string
 	for _, eps := range epSlices {

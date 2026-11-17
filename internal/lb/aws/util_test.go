@@ -41,8 +41,8 @@ func TestEndpointTargets(t *testing.T) {
 	slices := []discoveryv1.EndpointSlice{
 		slice(
 			ep(new(true), nil, "10.0.0.1"),
-			ep(new(false), nil, "10.0.0.2"), // not ready
-			ep(nil, nil, "10.0.0.3"),        // readiness unknown
+			ep(new(false), nil, "10.0.0.2"),
+			ep(nil, nil, "10.0.0.3"),
 		),
 		slice(ep(new(true), nil, "10.0.1.1", "10.0.1.2")),
 	}
@@ -59,9 +59,9 @@ func TestReadyNodeNames(t *testing.T) {
 	slices := []discoveryv1.EndpointSlice{
 		slice(
 			ep(new(true), new("node-a"), "10.0.0.1"),
-			ep(new(true), new("node-a"), "10.0.0.2"), // duplicate node
+			ep(new(true), new("node-a"), "10.0.0.2"),
 			ep(new(false), new("node-b"), "10.0.0.3"),
-			ep(new(true), nil, "10.0.0.4"), // no node
+			ep(new(true), nil, "10.0.0.4"),
 		),
 		slice(ep(new(true), new("node-c"), "10.0.1.1")),
 	}

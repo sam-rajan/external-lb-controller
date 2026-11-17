@@ -14,10 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Command fakests answers every request with a canned STS GetCallerIdentity
-// response. The e2e suite runs it in the Kind cluster so the AWS provider can
-// be detected without a real AWS account. It is built into its own image by
-// test/e2e/fake_sts_test.go and is not part of the controller.
+// Command fakests serves a canned STS GetCallerIdentity response for the e2e suite.
 package main
 
 import (

@@ -37,8 +37,6 @@ func (p *elbProvider) instanceTargets(ctx context.Context, epSlices []discoveryv
 	return ids, nil
 }
 
-// readyNodeNames returns the distinct set of node names hosting at least one
-// ready endpoint, across all given EndpointSlices.
 func readyNodeNames(epSlices []discoveryv1.EndpointSlice) []string {
 	seen := make(map[string]struct{})
 	for _, eps := range epSlices {
@@ -56,8 +54,7 @@ func readyNodeNames(epSlices []discoveryv1.EndpointSlice) []string {
 	return names
 }
 
-// instanceIDForNode resolves a Node's EC2 instance ID from its providerID,
-// which AWS's cloud provider sets in the form "aws:///<az>/<instance-id>".
+// instanceIDForNode parses the EC2 instance ID from providerID ("aws:///<az>/<instance-id>").
 func (p *elbProvider) instanceIDForNode(ctx context.Context, nodeName string) (string, error) {
 	node := &corev1.Node{}
 	if err := p.k8sClient.Get(ctx, client.ObjectKey{Name: nodeName}, node); err != nil {

@@ -22,12 +22,8 @@ func validate(svc *corev1.Service) (admission.Warnings, error) {
 	return nil, nil
 }
 
-// validateUpdate additionally enforces immutability: once a Service is owned
-// by us, its loadBalancerClass can't be changed away (doing so would make the
-// controller's ownedByUs check skip the Service on every future reconcile,
-// orphaning its finalizer and any already-provisioned cloud resources), and
-// provider-specific fields that can't be modified in place (see
-// lb.ValidateAnnotationsUpdate) are likewise rejected.
+// validateUpdate also enforces immutability: the loadBalancerClass cannot be changed away from ours
+// (it would orphan the finalizer and cloud resources), nor fields a provider cannot update in place.
 func validateUpdate(oldSvc, newSvc *corev1.Service) (admission.Warnings, error) {
 	var errs []string
 

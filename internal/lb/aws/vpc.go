@@ -12,13 +12,10 @@ import (
 )
 
 const (
-	// Standard EKS subnet tagging
 	subnetTagRoleInternetFacing = "kubernetes.io/role/elb"
 	subnetTagRoleInternal       = "kubernetes.io/role/internal-elb"
 )
 
-// resolveSubnetIDs returns annotationSubnets if set, otherwise discovers
-// subnets by tag for the Service's scheme.
 func (p *elbProvider) resolveSubnetIDs(ctx context.Context, svc *corev1.Service) ([]string, error) {
 	if subnets := svc.Annotations[annotationSubnets]; subnets != "" {
 		return splitCSV(subnets), nil
@@ -75,10 +72,8 @@ func (p *elbProvider) vpcIDFromSubnet(ctx context.Context, subnetID string) (str
 	return aws.ToString(out.Subnets[0].VpcId), nil
 }
 
-// resolveSourceRanges determines which CIDRs are allowed to reach the load
-// balancer's listeners: svc.Spec.LoadBalancerSourceRanges always wins if set;
-// otherwise internet-facing LBs default to 0.0.0.0/0 and internal LBs default
-// to the VPC's own CIDR block(s).
+// resolveSourceRanges: LoadBalancerSourceRanges wins; otherwise internet-facing defaults to
+// 0.0.0.0/0 and internal to the VPC CIDR block(s).
 func (p *elbProvider) resolveSourceRanges(ctx context.Context, svc *corev1.Service, vpcID string) ([]string, error) {
 	if len(svc.Spec.LoadBalancerSourceRanges) > 0 {
 		return svc.Spec.LoadBalancerSourceRanges, nil

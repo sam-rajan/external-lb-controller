@@ -33,7 +33,6 @@ func (p *elbProvider) ensureListener(ctx context.Context, svc *corev1.Service, l
 
 	for _, l := range listeners {
 		if aws.ToInt32(l.Port) == port.Port {
-			// Listener already exists; reconcile its protocol/cert and default action.
 			_, err := p.elb.ModifyListener(ctx, &elbv2.ModifyListenerInput{
 				ListenerArn:  l.ListenerArn,
 				Protocol:     protocol,
@@ -69,10 +68,6 @@ func (p *elbProvider) ensureListener(ctx context.Context, svc *corev1.Service, l
 	return p.reconcileListenerCertificates(ctx, aws.ToString(out.Listeners[0].ListenerArn), certs)
 }
 
-// listenerProtocolAndCerts resolves the listener protocol and ACM certs for
-// a given Service port. SSL is enabled only if annotationSSLCert is set and
-// the port is covered by annotationSSLPorts (absent/"*" means all ports);
-// otherwise it falls back to the existing plaintext backendProtocol.
 func listenerProtocolAndCerts(svc *corev1.Service, port int32) (types.ProtocolEnum, []types.Certificate) {
 	certARNs := splitCSV(svc.Annotations[annotationSSLCert])
 	if len(certARNs) == 0 || !sslEnabledForPort(svc, port) {
@@ -98,9 +93,7 @@ func sslEnabledForPort(svc *corev1.Service, port int32) bool {
 	return slices.Contains(splitCSV(v), strconv.Itoa(int(port)))
 }
 
-// reconcileListenerCertificates ensures the listener's additional (SNI)
-// certificates match certs[1:] exactly (certs[0], if any, is the default
-// certificate and is set directly on the listener, not here).
+// reconcileListenerCertificates syncs the listener's SNI certificates (certs[1:]); certs[0] is the default.
 func (p *elbProvider) reconcileListenerCertificates(ctx context.Context, listenerARN string, certs []types.Certificate) error {
 	var desired []types.Certificate
 	if len(certs) > 1 {

@@ -13,19 +13,16 @@ import (
 )
 
 const (
-	// Standard AWS load balancer annotations (compatible with aws-load-balancer-controller).
 	annotationSubnets        = "service.beta.kubernetes.io/aws-load-balancer-subnets"
 	annotationSecurityGroups = "service.beta.kubernetes.io/aws-load-balancer-security-groups"
-	annotationScheme         = "service.beta.kubernetes.io/aws-load-balancer-scheme"      // "internet-facing" (default) or "internal"
-	annotationLBType         = "service.beta.kubernetes.io/aws-load-balancer-type"        // "nlb" (default) or "alb"
-	annotationLBName         = "service.beta.kubernetes.io/aws-load-balancer-name"        // custom name, defaults to "<namespace>-<name>"
-	annotationSSLCert        = "service.beta.kubernetes.io/aws-load-balancer-ssl-cert"    // comma-separated ACM cert ARNs; first is the default cert
-	annotationSSLPorts       = "service.beta.kubernetes.io/aws-load-balancer-ssl-ports"   // comma-separated ports, or "*"/absent for all ports (only meaningful if ssl-cert is set)
-	annotationTargetType     = "service.beta.kubernetes.io/aws-load-balancer-target-type" // "instance" (default) or "ip"
-	annotationLBAttributes   = "service.beta.kubernetes.io/aws-load-balancer-attributes"  // comma-separated key=value ELBv2 load balancer attributes, e.g. "load_balancing.cross_zone.enabled=true,deletion_protection.enabled=true"
+	annotationScheme         = "service.beta.kubernetes.io/aws-load-balancer-scheme"
+	annotationLBType         = "service.beta.kubernetes.io/aws-load-balancer-type"
+	annotationLBName         = "service.beta.kubernetes.io/aws-load-balancer-name"
+	annotationSSLCert        = "service.beta.kubernetes.io/aws-load-balancer-ssl-cert"
+	annotationSSLPorts       = "service.beta.kubernetes.io/aws-load-balancer-ssl-ports"
+	annotationTargetType     = "service.beta.kubernetes.io/aws-load-balancer-target-type"
+	annotationLBAttributes   = "service.beta.kubernetes.io/aws-load-balancer-attributes"
 
-	// Target group health check annotations; each is optional and left as the
-	// ELBv2 default when unset.
 	annotationHealthCheckProtocol        = "service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol"
 	annotationHealthCheckPort            = "service.beta.kubernetes.io/aws-load-balancer-healthcheck-port"
 	annotationHealthCheckPath            = "service.beta.kubernetes.io/aws-load-balancer-healthcheck-path"
@@ -40,7 +37,6 @@ const (
 	schemeInternetFacing = "internet-facing"
 	schemeInternal       = "internal"
 
-	// Tag applied to every AWS resource managed by this controller.
 	tagOwnerKey = "external-lb.io/service"
 )
 
@@ -48,11 +44,8 @@ func init() {
 	lb.Register("aws", detect)
 }
 
-// detect verifies the controller has working AWS credentials by calling
-// sts:GetCallerIdentity, an action every principal can call regardless of its
-// permissions. Unlike config.LoadDefaultConfig alone (which resolves
-// credentials lazily and rarely errors up front), this actually confirms the
-// credentials are usable before the AWS provider is selected.
+// detect confirms usable AWS credentials with sts:GetCallerIdentity, which any principal can call;
+// config.LoadDefaultConfig alone resolves credentials lazily and rarely errors.
 func detect(ctx context.Context, providerCfg lb.ProviderConfig) (lb.Provider, bool) {
 	awsCfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {

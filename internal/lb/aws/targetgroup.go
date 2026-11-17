@@ -75,7 +75,6 @@ func (p *elbProvider) createTargetGroup(ctx context.Context, svc *corev1.Service
 	return &out.TargetGroups[0], nil
 }
 
-// syncTargets deregisters stale targets and registers current ones.
 func (p *elbProvider) syncTargets(ctx context.Context, tgARN string, desired []string, targetPort int) error {
 	healthOut, err := p.elb.DescribeTargetHealth(ctx, &elbv2.DescribeTargetHealthInput{
 		TargetGroupArn: aws.String(tgARN),
