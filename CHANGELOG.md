@@ -2,10 +2,12 @@
 
 All notable changes to this project are documented here. The format is based
 on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
-intends to follow [Semantic Versioning](https://semver.org/) once it reaches
-v0.1.0. Until then, anything may change.
+follows [Semantic Versioning](https://semver.org/). Until v1.0.0, minor releases
+may include breaking changes.
 
 ## [Unreleased]
+
+## [0.1.0] - 2026-11-17
 
 ### Added
 - Controller for `Service` objects with `loadBalancerClass: external-lb.io/lb`,
@@ -27,4 +29,5 @@ v0.1.0. Until then, anything may change.
   Releases on `v*` tags.
 - README, `docs/operations.md`, and community files.
 
-[Unreleased]: https://github.com/sam-rajan/external-lb-controller/commits/main
+[Unreleased]: https://github.com/sam-rajan/external-lb-controller/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/sam-rajan/external-lb-controller/releases/tag/v0.1.0
