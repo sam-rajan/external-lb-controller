@@ -256,7 +256,7 @@ spec:
         env:
         - name: CLUSTER_NAME
           value: ""
-        image: ghcr.io/sam-rajan/external-lb-controller:v0.1.0-rc1
+        image: ghcr.io/sam-rajan/external-lb-controller:v0.1.0
         livenessProbe:
           httpGet:
             path: /healthz
