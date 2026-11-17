@@ -21,6 +21,7 @@ package e2e
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 
@@ -41,6 +42,11 @@ const (
 	fakeSTSPort = 8080
 	managerName = "external-lb-controller-controller-manager"
 )
+
+// fakeSTSImage is built from test/e2e/fakests and loaded into Kind, so the suite
+// does not depend on pulling an image from an external registry (which is
+// rate limited on shared CI runners).
+const fakeSTSImage = "example.com/fake-sts:v0.0.1"
 
 // fakeSTSManifest is a restricted-policy-compliant Deployment and Service that
 // answer every request with a canned GetCallerIdentity response.
@@ -66,31 +72,8 @@ spec:
           type: RuntimeDefault
       containers:
       - name: fake-sts
-        image: public.ecr.aws/docker/library/python:3.13-alpine
-        command: ["python", "-u", "-c"]
-        args:
-        - |
-          from http.server import BaseHTTPRequestHandler, HTTPServer
-          BODY = (
-              b'<GetCallerIdentityResponse xmlns="https://sts.amazonaws.com/doc/2011-06-15/">'
-              b'<GetCallerIdentityResult>'
-              b'<Arn>arn:aws:iam::111122223333:user/e2e</Arn>'
-              b'<UserId>AIDAEXAMPLEE2E</UserId>'
-              b'<Account>111122223333</Account>'
-              b'</GetCallerIdentityResult>'
-              b'<ResponseMetadata><RequestId>e2e</RequestId></ResponseMetadata>'
-              b'</GetCallerIdentityResponse>'
-          )
-          class Handler(BaseHTTPRequestHandler):
-              def do_POST(self):
-                  self.rfile.read(int(self.headers.get("Content-Length", 0)))
-                  self.send_response(200)
-                  self.send_header("Content-Type", "text/xml")
-                  self.send_header("Content-Length", str(len(BODY)))
-                  self.end_headers()
-                  self.wfile.write(BODY)
-              do_GET = do_POST
-          HTTPServer(("", 8080), Handler).serve_forever()
+        image: example.com/fake-sts:v0.0.1
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8080
         readinessProbe:
@@ -118,9 +101,20 @@ spec:
 // deployed manager to use it with dummy credentials. Changing the manager's
 // environment triggers a rollout, so the crash-looping pod is replaced.
 func deployFakeSTS() {
-	cmd := exec.Command("kubectl", "apply", "-f", "-")
-	cmd.Stdin = strings.NewReader(fakeSTSManifest)
+	containerTool := "docker"
+	if v, ok := os.LookupEnv("CONTAINER_TOOL"); ok {
+		containerTool = v
+	}
+	cmd := exec.Command(containerTool, "build", "-t", fakeSTSImage, "test/e2e/fakests")
 	_, err := utils.Run(cmd)
+	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build the fake STS image")
+
+	ExpectWithOffset(1, utils.LoadImageToKindClusterWithName(fakeSTSImage)).To(Succeed(),
+		"Failed to load the fake STS image into Kind")
+
+	cmd = exec.Command("kubectl", "apply", "-f", "-")
+	cmd.Stdin = strings.NewReader(fakeSTSManifest)
+	_, err = utils.Run(cmd)
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to deploy the fake STS endpoint")
 
 	cmd = exec.Command("kubectl", "rollout", "status", "deployment/"+fakeSTSName,
