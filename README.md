@@ -1,5 +1,13 @@
 # external-lb-controller
 
+[![Tests](https://github.com/sam-rajan/external-lb-controller/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/sam-rajan/external-lb-controller/actions/workflows/test.yml)
+[![Lint](https://github.com/sam-rajan/external-lb-controller/actions/workflows/lint.yml/badge.svg?branch=main)](https://github.com/sam-rajan/external-lb-controller/actions/workflows/lint.yml)
+[![E2E Tests](https://github.com/sam-rajan/external-lb-controller/actions/workflows/test-e2e.yml/badge.svg?branch=main)](https://github.com/sam-rajan/external-lb-controller/actions/workflows/test-e2e.yml)
+[![Release](https://img.shields.io/github/v/release/sam-rajan/external-lb-controller)](https://github.com/sam-rajan/external-lb-controller/releases/latest)
+[![License](https://img.shields.io/github/license/sam-rajan/external-lb-controller)](LICENSE)
+[![Go version](https://img.shields.io/github/go-mod/go-version/sam-rajan/external-lb-controller)](go.mod)
+[![Go Report Card](https://goreportcard.com/badge/github.com/sam-rajan/external-lb-controller)](https://goreportcard.com/report/github.com/sam-rajan/external-lb-controller)
+
 An out-of-tree Kubernetes controller that provisions cloud load balancers for
 `Service` objects of `type: LoadBalancer` that opt in with
 `loadBalancerClass: external-lb.io/lb`.
