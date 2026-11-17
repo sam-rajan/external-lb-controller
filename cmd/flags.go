@@ -20,6 +20,7 @@ type Config struct {
 
 	ProbeAddr            string
 	EnableLeaderElection bool
+	EnableHTTP2          bool
 
 	ClusterName   string
 	CloudProvider string
@@ -50,6 +51,10 @@ func parseFlags() *Config {
 	flag.StringVar(&cfg.ProbeAddr, "health-probe-bind-address", ":8081", "The address the health probe endpoint binds to.")
 	flag.BoolVar(&cfg.EnableLeaderElection, "leader-elect", false,
 		"Enable leader election to ensure only one active controller manager.")
+
+	flag.BoolVar(&cfg.EnableHTTP2, "enable-http2", false,
+		"If set, HTTP/2 is enabled for the metrics and webhook servers. It is disabled by default "+
+			"to avoid the HTTP/2 Stream Cancellation and Rapid Reset vulnerabilities (CVE-2023-44487, CVE-2023-39325).")
 
 	flag.StringVar(&cfg.ClusterName, "cluster-name", "",
 		"Name of the Kubernetes cluster, used to auto-discover subnets tagged "+

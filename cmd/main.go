@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -114,8 +115,24 @@ func main() {
 	}
 }
 
+// tlsOptions returns TLS settings shared by the metrics and webhook servers.
+// HTTP/2 is disabled unless explicitly enabled, because it is vulnerable to the
+// HTTP/2 Stream Cancellation and Rapid Reset attacks (CVE-2023-44487,
+// CVE-2023-39325).
+func tlsOptions(cfg *Config) []func(*tls.Config) {
+	if cfg.EnableHTTP2 {
+		return nil
+	}
+	return []func(*tls.Config){
+		func(c *tls.Config) {
+			setupLog.Info("Disabling HTTP/2")
+			c.NextProtos = []string{"http/1.1"}
+		},
+	}
+}
+
 func buildWebhookServer(cfg *Config) webhook.Server {
-	opts := webhook.Options{}
+	opts := webhook.Options{TLSOpts: tlsOptions(cfg)}
 
 	if cfg.WebhookCertDir != "" {
 		setupLog.Info("Using provided webhook certificates", "path", cfg.WebhookCertDir)
@@ -131,6 +148,7 @@ func buildMetricsOptions(cfg *Config) metricsserver.Options {
 	opts := metricsserver.Options{
 		BindAddress:   cfg.MetricsAddr,
 		SecureServing: cfg.SecureMetrics,
+		TLSOpts:       tlsOptions(cfg),
 	}
 
 	if cfg.SecureMetrics {
