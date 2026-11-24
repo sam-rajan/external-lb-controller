@@ -1,5 +1,5 @@
 # Same base images as the controller's Dockerfile, so no extra registry is needed.
-FROM golang:1.26 AS builder
+FROM golang:1.27 AS builder
 WORKDIR /workspace
 COPY main.go .
 RUN CGO_ENABLED=0 go build -o fake-sts main.go
